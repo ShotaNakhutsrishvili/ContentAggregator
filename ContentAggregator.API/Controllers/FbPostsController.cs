@@ -21,8 +21,13 @@ namespace ContentAggregator.API.Controllers
         {
             try
             {
-                string result = await _fbPoster.SharePost(post.PageId, post.Url?.ToString(), post.CustomText);
-                return Ok(new { Result = result });
+                var result = await _fbPoster.SharePost(post.PageId, post.Url?.ToString(), post.CustomText);
+                if (!result.Success)
+                {
+                    return BadRequest(new { result.Message });
+                }
+
+                return Ok(new { result.Message, result.PostId });
             }
             catch (InvalidOperationException ex)
             {

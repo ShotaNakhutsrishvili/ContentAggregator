@@ -1,4 +1,5 @@
-﻿using ContentAggregator.Core.Entities;
+using ContentAggregator.Core.Entities;
+using Microsoft.EntityFrameworkCore;
 
 namespace ContentAggregator.Infrastructure.Data
 {
@@ -6,18 +7,17 @@ namespace ContentAggregator.Infrastructure.Data
     {
         public static void Initialize(DatabaseContext context)
         {
-            context.Database.EnsureCreated();
+            context.Database.Migrate();
 
-            // Look for any features.
             if (context.Features.Any())
             {
-                return; // DB has been seeded
+                return;
             }
 
             var features = new Feature[]
             {
-                new Feature{ FirstNameEng="Irakli", LastNameEng="Gogava", FirstNameGeo="ირაკლი", LastNameGeo="გოგავა" },
-                new Feature{ FirstNameEng="Soso", LastNameEng="Manjavidze", FirstNameGeo="სოსო", LastNameGeo="მანჯავიძე" }
+                new() { FirstNameEng = "Irakli", LastNameEng = "Gogava", FirstNameGeo = "ირაკლი", LastNameGeo = "გოგავა" },
+                new() { FirstNameEng = "Soso", LastNameEng = "Manjavidze", FirstNameGeo = "სოსო", LastNameGeo = "მანჯავიძე" }
             };
 
             foreach (Feature feature in features)
@@ -27,10 +27,9 @@ namespace ContentAggregator.Infrastructure.Data
 
             context.SaveChanges();
 
-
             var ytChannels = new YTChannel[]
             {
-                new YTChannel{ Name="Salte", Id="UCIblVXoJdqdkIf694p3R6Wg", Url=new Uri("https://www.youtube.com/@salte1481"),  }
+                new() { Name = "Salte", Id = "UCIblVXoJdqdkIf694p3R6Wg", Url = new Uri("https://www.youtube.com/@salte1481") }
             };
 
             foreach (YTChannel ytChannel in ytChannels)

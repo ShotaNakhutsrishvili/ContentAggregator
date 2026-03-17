@@ -10,6 +10,7 @@ namespace ContentAggregator.Core.Interfaces
         Task<List<YoutubeContent>> GetYTContentsWithoutEngSummaries();
         Task<List<YoutubeContent>> GetYTContentsWithoutGeoSummaries();
         Task<List<YoutubeContent>> GetYTContentsForFBPost();
+        Task<List<YoutubeContent>> GetYTContentsForYoutubeCommentPost();
         Task AddYTContentFeature(YoutubeContentFeature contentFeature);
         Task AddYTContents(List<YoutubeContent> contents);
         Task UpdateYTContentsAsync(YoutubeContent yTContent);

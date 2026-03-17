@@ -1,6 +1,7 @@
-﻿using ContentAggregator.Core.Interfaces;
+using ContentAggregator.Core.Interfaces;
 using ContentAggregator.Core.Models;
 using ContentAggregator.Core.Services;
+using Hangfire;
 
 namespace ContentAggregator.API.Services.BackgroundServices
 {
@@ -19,40 +20,59 @@ namespace ContentAggregator.API.Services.BackgroundServices
             _fbPageId = configuration["FbPageId"]!;
         }
 
+        [DisableConcurrentExecution(60 * 10)]
+        public async Task ProcessOnceAsync()
+        {
+            await ProcessOnceAsync(CancellationToken.None);
+        }
+
+        public async Task ProcessOnceAsync(CancellationToken stoppingToken)
+        {
+            try
+            {
+                using var scope = _serviceProvider.CreateScope();
+                var yTRepository = scope.ServiceProvider.GetRequiredService<IYoutubeContentRepository>();
+
+                var youtubeContents = await yTRepository.GetYTContentsForFBPost();
+                _logger.LogInformation("{Now}: DB query returned {Count} items ready to be posted on FB.", DateTimeOffset.UtcNow, youtubeContents.Count);
+
+                if (!youtubeContents.Any())
+                {
+                    return;
+                }
+
+                foreach (var content in youtubeContents)
+                {
+                    var postUrl = $"https://www.youtube.com/watch?v={content.VideoId}";
+                    var message = (content.VideoSummaryGeo ?? content.VideoSummaryEng) + $"\n\n{Constants.AISummaryDisclaimer}";
+                    var publishResult = await _fbPoster.SharePost(_fbPageId, postUrl, message, stoppingToken);
+
+                    if (!publishResult.Success)
+                    {
+                        content.LastProcessingError = publishResult.Message;
+                        _logger.LogWarning("FB post failed for content ID {ContentId}. {Message}", content.Id, publishResult.Message);
+                        continue;
+                    }
+
+                    content.FbPosted = true;
+                    content.LastProcessingError = null;
+                    _logger.LogInformation("{Now}: Posted on FB. Content ID: {ContentId}.", DateTimeOffset.UtcNow, content.Id);
+                }
+
+                await yTRepository.UpdateYTContentsRangeAsync(youtubeContents);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "{Service} threw an exception.", nameof(FacebookService));
+            }
+        }
+
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             while (!stoppingToken.IsCancellationRequested)
             {
-                try
-                {
-                    using (var scope = _serviceProvider.CreateScope())
-                    {
-                        var yTRepository = scope.ServiceProvider.GetRequiredService<IYoutubeContentRepository>();
-
-                        var youtubeContents = await yTRepository.GetYTContentsForFBPost();
-                        _logger.LogInformation($"{DateTime.Now}: DB query returned {youtubeContents.Count} items ready to be posted on FB.");
-
-                        if (youtubeContents.Any())
-                        {
-                            foreach (var content in youtubeContents)
-                            {
-                                var postUrl = $"https://www.youtube.com/watch?v={content.VideoId}";
-                                var message = (content.VideoSummaryGeo ?? content.VideoSummaryEng) + $"\n\n{Constants.AISummaryDisclaimer}"; // TODO: No need to post english.
-                                await _fbPoster.SharePost(_fbPageId, postUrl, message);
-                                _logger.LogInformation($"{DateTime.Now}: Posting on FB.");
-
-                                content.FbPosted = true;
-                            }
-                            await yTRepository.UpdateYTContentsRangeAsync(youtubeContents);
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning($"{nameof(FacebookService)} threw an exception: {ex}");
-                    // Log the exception (logging mechanism not shown here)
-                }
-                await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken); // Adjust the interval as needed
+                await ProcessOnceAsync(stoppingToken);
+                await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken);
             }
         }
     }

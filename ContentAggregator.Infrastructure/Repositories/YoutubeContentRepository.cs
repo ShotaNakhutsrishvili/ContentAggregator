@@ -36,12 +36,17 @@ namespace ContentAggregator.Infrastructure.Repositories
 
         public async Task<List<YoutubeContent>> GetYTContentsWithoutGeoSummaries()
         {
-            return await _context.YoutubeContents.Where(x => x.VideoSummaryEng != null && x.VideoSummaryGeo == null).ToListAsync();
+            return await _context.YoutubeContents.Where(x => x.SubtitlesFiltered != null && x.VideoSummaryGeo == null).ToListAsync();
         }
 
         public async Task<List<YoutubeContent>> GetYTContentsForFBPost()
         {
             return await _context.YoutubeContents.Where(x => x.VideoSummaryGeo != null && !x.FbPosted).ToListAsync();
+        }
+
+        public async Task<List<YoutubeContent>> GetYTContentsForYoutubeCommentPost()
+        {
+            return await _context.YoutubeContents.Where(x => x.VideoSummaryGeo != null && !x.YoutubeCommentPosted).ToListAsync();
         }
 
         public async Task AddYTContents(List<YoutubeContent> contents)

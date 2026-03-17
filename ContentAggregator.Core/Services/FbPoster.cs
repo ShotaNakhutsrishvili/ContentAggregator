@@ -1,24 +1,29 @@
-﻿using Facebook;
+using System.Text.Json;
 
 namespace ContentAggregator.Core.Services
 {
     public class FbPoster
     {
-        private readonly FacebookClient _fb;
+        private readonly HttpClient _httpClient;
+        private readonly string _accessToken;
 
-        public FbPoster(string accessToken)
+        public FbPoster(string accessToken, HttpClient httpClient)
         {
-            _fb = new FacebookClient(accessToken);
+            _accessToken = accessToken;
+            _httpClient = httpClient;
         }
 
-        public async Task<string> SharePost(string pageId, string? postUrl, string? message = null)
+        public async Task<PublishResult> SharePost(string pageId, string? postUrl, string? message = null, CancellationToken cancellationToken = default)
         {
             if (postUrl == null && message == null)
             {
                 throw new InvalidOperationException("Either postUrl or message must be provided.");
             }
 
-            var postParameters = new Dictionary<string, object>();
+            var postParameters = new Dictionary<string, string?>
+            {
+                ["access_token"] = _accessToken
+            };
 
             if (!string.IsNullOrEmpty(postUrl))
             {
@@ -30,19 +35,46 @@ namespace ContentAggregator.Core.Services
                 postParameters["message"] = message;
             }
 
+            var response = await _httpClient.PostAsync(
+                $"https://graph.facebook.com/v22.0/{pageId}/feed",
+                new FormUrlEncodedContent(postParameters!),
+                cancellationToken);
+
+            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                return new PublishResult(
+                    false,
+                    $"Facebook API error: {(int)response.StatusCode} {response.ReasonPhrase}. Body: {responseBody}",
+                    null);
+            }
+
             try
             {
-                dynamic result = await _fb.PostTaskAsync($"/{pageId}/feed", postParameters);
-                return "Post shared successfully with ID: " + result.id;
+                var payload = JsonSerializer.Deserialize<FacebookPublishResponse>(responseBody, new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+
+                return new PublishResult(
+                    !string.IsNullOrWhiteSpace(payload?.Id),
+                    string.IsNullOrWhiteSpace(payload?.Id)
+                        ? "Facebook API returned success without post ID."
+                        : $"Post shared successfully with ID: {payload.Id}",
+                    payload?.Id);
             }
-            catch (FacebookApiException ex)
+            catch (JsonException)
             {
-                return "Facebook API Error: " + ex.Message;
+                return new PublishResult(false, $"Facebook API response parse error. Body: {responseBody}", null);
             }
-            catch (Exception ex)
-            {
-                return "An unexpected error occurred: " + ex.Message;
-            }
+        }
+
+        public readonly record struct PublishResult(bool Success, string Message, string? PostId);
+
+        private sealed class FacebookPublishResponse
+        {
+            public string? Id { get; set; }
         }
     }
 }

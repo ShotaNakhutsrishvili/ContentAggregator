@@ -1,11 +1,10 @@
 ﻿using Newtonsoft.Json;
-using Microsoft.IdentityModel.Tokens;
 using System.Text.RegularExpressions;
 using ContentAggregator.Core.Entities;
 using ContentAggregator.Core.Interfaces;
 using ContentAggregator.Core.Models.YTModels;
+using Hangfire;
 using static ContentAggregator.API.Program;
-using NuGet.Packaging;
 
 namespace ContentAggregator.API.Services.BackgroundServices
 {
@@ -29,17 +28,27 @@ namespace ContentAggregator.API.Services.BackgroundServices
         {
             while (!stoppingToken.IsCancellationRequested)
             {
-                try
-                {
-                    await ProcessChannelsAsync(stoppingToken);
-                    await ProcessVideosNeedingRefetchAsync(stoppingToken);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "An error occurred while processing YouTube channels.");
-                }
-
+                await ProcessOnceAsync(stoppingToken);
                 await Task.Delay(TimeSpan.FromHours(2.5), stoppingToken);
+            }
+        }
+
+        [DisableConcurrentExecution(60 * 60)]
+        public async Task ProcessOnceAsync()
+        {
+            await ProcessOnceAsync(CancellationToken.None);
+        }
+
+        public async Task ProcessOnceAsync(CancellationToken stoppingToken)
+        {
+            try
+            {
+                await ProcessChannelsAsync(stoppingToken);
+                await ProcessVideosNeedingRefetchAsync(stoppingToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "An error occurred while processing YouTube channels.");
             }
         }
 
@@ -50,13 +59,14 @@ namespace ContentAggregator.API.Services.BackgroundServices
 
             var videosNeedingRefetch = await yTContentRepository.GetYTContentsNeedingRefetch();
 
-            if (videosNeedingRefetch.IsNullOrEmpty())
+            if (!videosNeedingRefetch.Any())
             {
                 _logger.LogInformation("No videos needing refetch.");
                 return;
             }
 
-            var requestUrl = $"https://youtube.googleapis.com/youtube/v3/videos?id={videosNeedingRefetch.Select(x => x.VideoId)}&key={_apiKey}&part=contentDetails";
+            var joinedVideoIds = string.Join(",", videosNeedingRefetch.Select(x => x.VideoId));
+            var requestUrl = $"https://youtube.googleapis.com/youtube/v3/videos?id={joinedVideoIds}&key={_apiKey}&part=contentDetails";
             var response = await _httpClient.GetAsync(requestUrl);
 
             if (!response.IsSuccessStatusCode)
@@ -112,12 +122,15 @@ namespace ContentAggregator.API.Services.BackgroundServices
             _logger.LogInformation($"Fetching YouTube contents for channel {channel.Id}.");
 
             var youtubeContents = await FetchYoutubeContentsAsync(channel); // TODO: This might throw exception. Need to encapsulate the background service in try-catch.
-            if (!youtubeContents.IsNullOrEmpty())
+            if (youtubeContents.Any())
             {
                 _logger.LogInformation($"Fetched {youtubeContents.Count} new videos for channel {channel.Id}.");
 
                 channel.LastPublishedAt = youtubeContents.Max(x => x.VideoPublishedAt);
-                channel.YoutubeContents.AddRange(youtubeContents);
+                foreach (var youtubeContent in youtubeContents)
+                {
+                    channel.YoutubeContents.Add(youtubeContent);
+                }
 
                 await channelRepository.UpdateChannelAsync(channel, stoppingToken);
             }
@@ -146,7 +159,7 @@ namespace ContentAggregator.API.Services.BackgroundServices
         private async Task<List<YoutubeContent>> MapToYoutubeContentsAsync(List<SearchItem> searchItems, YTChannel channel)
         {
             var longerVideos = await FetchLongerVideosAsync(searchItems, _minimumVideoLength);
-            if (longerVideos.IsNullOrEmpty())
+            if (!longerVideos.Any())
             {
                 return new List<YoutubeContent>();
             }
@@ -164,7 +177,7 @@ namespace ContentAggregator.API.Services.BackgroundServices
 
         private async Task<List<(string VideoId, string VideoTitle, DateTimeOffset PublishedAt, TimeSpan VideoLength)>> FetchLongerVideosAsync(List<SearchItem> searchItems, TimeSpan minLength)
         {
-            if (searchItems.IsNullOrEmpty())
+            if (!searchItems.Any())
             {
                 return new List<(string, string, DateTimeOffset, TimeSpan)>();
             }
@@ -200,9 +213,10 @@ namespace ContentAggregator.API.Services.BackgroundServices
                 .ToList();
         }
 
-        public static TimeSpan ParseIso8601Duration(string duration) // TODO: ამას unit test უნდა დავუწერო.
+        public static TimeSpan ParseIso8601Duration(string duration) // TODO: add unit tests for edge cases.
         {
-            if (string.IsNullOrEmpty(duration) || duration == "P0D") // live-ებს აქვთ ეს duration. TODO: Risk of missing lives if LastPublishedDate is set to higher than live launch date.
+            // Some YouTube live streams may report "P0D" while in progress.
+            if (string.IsNullOrEmpty(duration) || duration == "P0D")
             {
                 // Think of possible solutions. 1. message broker.
                 // 2. Setting LastPublishedDate to lower than live. Risks duplicating newer videos that were added after live started but before live finished.

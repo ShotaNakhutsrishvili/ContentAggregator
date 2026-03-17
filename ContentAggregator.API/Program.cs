@@ -7,6 +7,8 @@ using Microsoft.AspNetCore.Mvc;
 using ContentAggregator.API.Services.Middlewares;
 using ContentAggregator.Core.Services;
 using ContentAggregator.API.Services.BackgroundServices;
+using Hangfire;
+using Hangfire.PostgreSql;
 using System.Security.Cryptography.X509Certificates;
 
 namespace ContentAggregator.API
@@ -60,24 +62,39 @@ namespace ContentAggregator.API
 
             builder.Services.AddScoped<IFeatureRepository, FeatureRepository>();
             builder.Services.AddScoped<IYTChannelRepository, YTChannelRepository>();
-            builder.Services.AddSingleton<FbPoster>(provider =>
-            {
-                var accessToken = builder.Configuration["FacebookAccessToken"];
-                return new FbPoster(accessToken!);
-            });
+            builder.Services.AddScoped<IYoutubeContentRepository, YoutubeContentRepository>();
+
             builder.Services.AddHttpClient(HttpClientNames.Default);
             builder.Services.AddHttpClient(HttpClientNames.LongTimeout, client =>
             {
-                client.Timeout = TimeSpan.FromMinutes(40); // Set the timeout to 5 minutes
+                client.Timeout = TimeSpan.FromMinutes(40);
             });
-            builder.Services.AddScoped<IYoutubeContentRepository, YoutubeContentRepository>();
-            builder.Services.AddHostedService<YoutubeService>();
-            builder.Services.AddHostedService<SubtitleService>();
-            builder.Services.AddHostedService<SummarizerService>();
-            builder.Services.AddHostedService<TranslatorService>();
-            builder.Services.AddHostedService<FacebookService>();
-            //builder.Services.AddSingleton(_ => new SemaphoreSlim(initialCount: 1, maxCount: 1));
-            //builder.Services.AddScoped<ErrorHandlerMiddleware>(); // TODO: which scope is the best for this middleware?
+            builder.Services.AddHttpClient(nameof(YoutubeCommentService), client =>
+            {
+                client.Timeout = TimeSpan.FromMinutes(2);
+            });
+
+            builder.Services.AddSingleton<FbPoster>(provider =>
+            {
+                var accessToken = builder.Configuration["FacebookAccessToken"] ?? string.Empty;
+                var httpClientFactory = provider.GetRequiredService<IHttpClientFactory>();
+                return new FbPoster(accessToken, httpClientFactory.CreateClient(HttpClientNames.Default));
+            });
+
+            builder.Services.AddScoped<YoutubeService>();
+            builder.Services.AddScoped<SubtitleService>();
+            builder.Services.AddScoped<SummarizerService>();
+            builder.Services.AddScoped<FacebookService>();
+            builder.Services.AddScoped<YoutubeCommentService>();
+
+            builder.Services.AddHangfire(config =>
+            {
+                config.SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
+                    .UseSimpleAssemblyNameTypeSerializer()
+                    .UseRecommendedSerializerSettings()
+                    .UsePostgreSqlStorage(storage => storage.UseNpgsqlConnection(configuration.GetConnectionString("PostgreSQLConnection")));
+            });
+            builder.Services.AddHangfireServer();
 
             builder.Services.AddDatabaseDeveloperPageExceptionFilter();
             // Configure logging
@@ -87,6 +104,7 @@ namespace ContentAggregator.API
             var app = builder.Build();
 
             CreateDbIfNotExists(app.Services);
+            RegisterRecurringJobs(app.Services);
 
             app.UseCors("AllowSpecificOrigin");
 
@@ -96,6 +114,8 @@ namespace ContentAggregator.API
                 app.UseSwagger();
                 app.UseSwaggerUI();
             }
+
+            app.UseHangfireDashboard("/hangfire");
             //app.UseMiddleware<ErrorHandlerMiddleware>();
             app.UseExceptionHandler();
             app.UseMiddleware<ResponseTimerMiddleware>();
@@ -108,6 +128,37 @@ namespace ContentAggregator.API
             app.MapControllers();
 
             app.Run();
+        }
+
+        private static void RegisterRecurringJobs(IServiceProvider serviceProvider)
+        {
+            using var scope = serviceProvider.CreateScope();
+            var recurringJobs = scope.ServiceProvider.GetRequiredService<IRecurringJobManager>();
+
+            recurringJobs.AddOrUpdate<YoutubeService>(
+                "pipeline:youtube-discovery",
+                job => job.ProcessOnceAsync(),
+                "0 */2 * * *");
+
+            recurringJobs.AddOrUpdate<SubtitleService>(
+                "pipeline:subtitle-fetch",
+                job => job.ProcessOnceAsync(),
+                "*/30 * * * *");
+
+            recurringJobs.AddOrUpdate<SummarizerService>(
+                "pipeline:georgian-summary",
+                job => job.ProcessOnceAsync(),
+                "*/15 * * * *");
+
+            recurringJobs.AddOrUpdate<FacebookService>(
+                "pipeline:facebook-publish",
+                job => job.ProcessOnceAsync(),
+                "*/5 * * * *");
+
+            recurringJobs.AddOrUpdate<YoutubeCommentService>(
+                "pipeline:youtube-comment-publish",
+                job => job.ProcessOnceAsync(),
+                "*/10 * * * *");
         }
 
         private static void CreateDbIfNotExists(IServiceProvider serviceProvider)

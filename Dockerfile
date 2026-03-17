@@ -1,5 +1,5 @@
 # Build stage
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 # Copy project files and restore dependencies
 COPY ["ContentAggregator.API/ContentAggregator.API.csproj", "ContentAggregator.API/"]
@@ -15,17 +15,18 @@ RUN dotnet build "ContentAggregator.API.csproj" -c Release -o /app/build
 RUN dotnet publish "ContentAggregator.API.csproj" -c Release -o /app/publish
 
 # Runtime stage
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 
-# Install ffmpeg - required for yt-dlp subtitle formatting
-RUN apt-get update && apt-get install -y ffmpeg python3
+# Install ffmpeg + yt-dlp dependencies
+RUN apt-get update && apt-get install -y ffmpeg python3 python3-pip && \
+    pip3 install --no-cache-dir yt-dlp
 
 # Copy published files from build stage
 COPY --from=build /app/publish .
 
 # Configure environment and expose port
-ENV ASPNETCORE_ENVIRONMENTS=Production
+ENV ASPNETCORE_ENVIRONMENT=Production
 ENV ASPNETCORE_URLS=http://+:80;https://+:443
 EXPOSE 80
 EXPOSE 443

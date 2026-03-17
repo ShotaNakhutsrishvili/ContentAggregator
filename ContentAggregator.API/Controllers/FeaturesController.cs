@@ -2,7 +2,6 @@
 using Microsoft.EntityFrameworkCore;
 using ContentAggregator.Core.Interfaces;
 using ContentAggregator.Core.Entities;
-using NuGet.Common;
 using ContentAggregator.Core.Models.DTOs;
 
 namespace ContentAggregator.API.Controllers
