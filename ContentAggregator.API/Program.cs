@@ -10,6 +10,7 @@ using ContentAggregator.API.Services.BackgroundServices;
 using Hangfire;
 using Hangfire.PostgreSql;
 using System.Security.Cryptography.X509Certificates;
+using dotenv.net;
 
 namespace ContentAggregator.API
 {
@@ -17,6 +18,7 @@ namespace ContentAggregator.API
     {
         public static void Main(string[] args)
         {
+            LoadSecretsForDevelopment();
             var builder = WebApplication.CreateBuilder(args);
 
             ConfigureKestrel(builder, builder.Environment);
@@ -200,6 +202,24 @@ namespace ContentAggregator.API
         {
             public const string Default = "default";
             public const string LongTimeout = "longTimeout";
+        }
+
+        /// <summary>
+        /// Use this method before WebApplication.CreateBuilder(args) to load secrets from .env file in development environment.
+        /// Otherwise the secrets won't be available for calls like builder.Configuration.GetConnectionString("PostgreSqlConnection").
+        /// </summary>
+        /// <param name="prefix">location prefix for projects nested with different depth.</param>
+        public static void LoadSecretsForDevelopment(string prefix = "..")
+        {
+            var environment = Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT")
+                      ?? Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
+
+            // The if check is alternative to using builder.Environment.IsDevelopment().
+            // We can't use that here because WebApplication.CreateBuilder(args) returns builder after this method is used.
+            if (string.Equals(environment, "Development", StringComparison.OrdinalIgnoreCase))
+            {
+                DotEnv.Load(options: new DotEnvOptions(envFilePaths: new[] { $"{prefix}/.env" }));
+            }
         }
     }
 }
