@@ -27,6 +27,8 @@ namespace ContentAggregator.Infrastructure.Data
                 entity.Property(p => p.Id)
                     .HasMaxLength(100)
                     .ValueGeneratedNever(); // Disable DB generation
+                entity.Property(p => p.ActivityLevel)
+                    .HasConversion<byte>();
             });
 
             modelBuilder.Entity<YoutubeContent>()

@@ -213,7 +213,7 @@ namespace ContentAggregator.API.Controllers
                     Name = channelName,
                     Id = channelId,
                     Url = new Uri($"https://www.youtube.com/{channelSuffix}"),
-                    ActivityLevel = 0, // ActivityLevel 0 channels won't be used in YoutubeService
+                    ActivityLevel = ChannelActivityLevel.Disabled, // Disabled channels won't be used in YoutubeService.
                 };
 
                 await _yTChannelRepository.AddChannelAsync(channel, cancellationToken);

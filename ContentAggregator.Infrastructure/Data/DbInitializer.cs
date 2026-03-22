@@ -29,7 +29,13 @@ namespace ContentAggregator.Infrastructure.Data
 
             var ytChannels = new YTChannel[]
             {
-                new() { Name = "Salte", Id = "UCIblVXoJdqdkIf694p3R6Wg", Url = new Uri("https://www.youtube.com/@salte1481") }
+                new()
+                {
+                    Name = "Salte",
+                    Id = "UCIblVXoJdqdkIf694p3R6Wg",
+                    Url = new Uri("https://www.youtube.com/@salte1481"),
+                    ActivityLevel = ChannelActivityLevel.Medium
+                }
             };
 
             foreach (YTChannel ytChannel in ytChannels)

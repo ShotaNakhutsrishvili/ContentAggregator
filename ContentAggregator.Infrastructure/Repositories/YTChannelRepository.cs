@@ -28,7 +28,9 @@ namespace ContentAggregator.Infrastructure.Repositories
 
         public async Task<IEnumerable<YTChannel>> GetAllChannelsAsync(CancellationToken cancellationToken)
         {
-            return await _context.YTChannels.Where(x => x.ActivityLevel != 0).ToListAsync(cancellationToken);
+            return await _context.YTChannels
+                .Where(x => x.ActivityLevel != ChannelActivityLevel.Disabled)
+                .ToListAsync(cancellationToken);
         }
 
         public async Task AddChannelAsync(YTChannel channel, CancellationToken cancellationToken)

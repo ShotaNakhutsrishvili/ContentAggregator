@@ -6,7 +6,7 @@
         public required string Name { get; set; }
         public string? Description { get; set; }
         public required Uri Url { get; set; }
-        public byte ActivityLevel { get; set; }
+        public ChannelActivityLevel ActivityLevel { get; set; } = ChannelActivityLevel.Disabled;
         public DateTimeOffset? LastPublishedAt { get; set; }
         public string? TitleKeywords { get; set; }
         public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
