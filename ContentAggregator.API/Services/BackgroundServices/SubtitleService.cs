@@ -12,13 +12,20 @@ namespace ContentAggregator.API.Services.BackgroundServices
     /// </summary>
     public class SubtitleService : BackgroundService
     {
+        private const string YtDlpConfigPathKey = "YtDlp:ExecutablePath";
+
         private readonly IServiceProvider _serviceProvider;
         private readonly ILogger<SubtitleService> _logger;
+        private readonly string _ytDlpExecutable;
 
-        public SubtitleService(IServiceProvider serviceProvider, ILogger<SubtitleService> logger)
+        public SubtitleService(
+            IServiceProvider serviceProvider,
+            ILogger<SubtitleService> logger,
+            IConfiguration configuration)
         {
             _serviceProvider = serviceProvider;
             _logger = logger;
+            _ytDlpExecutable = ResolveYtDlpExecutable(configuration);
         }
 
         [DisableConcurrentExecution(60 * 40)]
@@ -93,12 +100,11 @@ namespace ContentAggregator.API.Services.BackgroundServices
         private async Task<string?> DownloadSubtitlesAsync(string videoId, string tempDir)
         {
             string tempDirForSingleSub = CreateTempDirectory(tempDir);
-            string executable = ResolveYtDlpExecutable();
 
             var processStartInfo = new ProcessStartInfo
             {
-                FileName = executable,
-                Arguments = $"--write-auto-sub --sub-lang \"ka,en\" --convert-subs srt --output \"subtitle.%(ext)s\" --skip-download https://www.youtube.com/watch?v={videoId}",
+                FileName = _ytDlpExecutable,
+                Arguments = $"--write-sub --write-auto-sub --sub-langs \"en-orig,ka-orig\" --sub-format \"srt\" --skip-download \"https://www.youtube.com/watch?v={videoId}\"",
                 WorkingDirectory = tempDirForSingleSub,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
@@ -133,19 +139,43 @@ namespace ContentAggregator.API.Services.BackgroundServices
             return preferredGeorgian ?? files.First();
         }
 
-        private static string ResolveYtDlpExecutable()
+        private string ResolveYtDlpExecutable(IConfiguration configuration)
         {
             var isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
-            var localCandidate = isWindows
-                ? Path.Combine(AppContext.BaseDirectory, "tools", "yt-dlp.exe")
-                : Path.Combine(AppContext.BaseDirectory, "tools", "yt-dlp");
+            var commandName = isWindows ? "yt-dlp.exe" : "yt-dlp";
+            var configuredPath = configuration[YtDlpConfigPathKey];
 
-            if (File.Exists(localCandidate))
+            if (!string.IsNullOrWhiteSpace(configuredPath))
             {
-                return localCandidate;
+                var resolvedConfiguredPath = ResolveConfiguredPath(configuredPath, commandName);
+                if (File.Exists(resolvedConfiguredPath))
+                {
+                    _logger.LogInformation("Using yt-dlp from configured path '{Path}'.", resolvedConfiguredPath);
+                    return resolvedConfiguredPath;
+                }
+
+                _logger.LogWarning(
+                    "Configured yt-dlp path '{Path}' was not found. Falling back to system PATH.",
+                    resolvedConfiguredPath);
             }
 
-            return isWindows ? "yt-dlp.exe" : "yt-dlp";
+            _logger.LogInformation("Using yt-dlp from system PATH with command '{Command}'.", commandName);
+            return commandName;
+        }
+
+        private static string ResolveConfiguredPath(string configuredPath, string commandName)
+        {
+            var normalizedPath = configuredPath.Trim();
+            var resolvedPath = Path.IsPathRooted(normalizedPath)
+                ? normalizedPath
+                : Path.GetFullPath(normalizedPath);
+
+            if (Directory.Exists(resolvedPath))
+            {
+                return Path.Combine(resolvedPath, commandName);
+            }
+
+            return resolvedPath;
         }
 
         private static string CreateTempDirectory(string initialPath)

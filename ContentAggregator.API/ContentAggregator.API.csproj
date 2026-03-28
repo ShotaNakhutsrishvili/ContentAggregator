@@ -24,13 +24,4 @@
     <ProjectReference Include="..\ContentAggregator.Infrastructure\ContentAggregator.Infrastructure.csproj" />
   </ItemGroup>
 	
-  <ItemGroup Condition=" '$(OS)' == 'Windows_NT' ">
-    <None Update=".\tools\yt-dlp.exe">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-	<None Update=".\tools\ffmpeg.exe">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-  </ItemGroup>
-
 </Project>
