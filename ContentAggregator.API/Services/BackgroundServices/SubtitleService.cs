@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+using System.ComponentModel;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using ContentAggregator.Core.Interfaces;
 using Hangfire;
@@ -45,16 +46,18 @@ namespace ContentAggregator.API.Services.BackgroundServices
 
                 foreach (var content in youtubeContents)
                 {
+                    stoppingToken.ThrowIfCancellationRequested();
+
                     try
                     {
-                        var subtitleSRTFile = await DownloadSubtitlesAsync(content.VideoId, tempDir);
+                        var subtitleSRTFile = await DownloadSubtitlesAsync(content.VideoId, tempDir, stoppingToken);
                         if (string.IsNullOrWhiteSpace(subtitleSRTFile))
                         {
                             continue;
                         }
 
-                        string subtitleSRTString = await File.ReadAllTextAsync(subtitleSRTFile!, stoppingToken);
-                        string[] subtitleSRTLines = await File.ReadAllLinesAsync(subtitleSRTFile!, stoppingToken);
+                        string subtitleSRTString = await File.ReadAllTextAsync(subtitleSRTFile, stoppingToken);
+                        string[] subtitleSRTLines = await File.ReadAllLinesAsync(subtitleSRTFile, stoppingToken);
 
                         if (string.IsNullOrEmpty(subtitleSRTString))
                         {
@@ -65,26 +68,46 @@ namespace ContentAggregator.API.Services.BackgroundServices
                         content.SubtitlesFiltered = SRTToText(subtitleSRTLines);
                         content.LastProcessingError = null;
                         await yTRepository.UpdateYTContentsAsync(content);
-                        _logger.LogInformation("Subtitles downloaded and filtered successfully for content ID {ContentId}.", content.Id);
+                        _logger.LogInformation(
+                            "Subtitles downloaded and filtered successfully for content ID {ContentId}.",
+                            content.Id);
 
                         var random = new Random();
                         await Task.Delay(TimeSpan.FromSeconds(random.Next(12, 20)), stoppingToken);
                     }
+                    catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                    {
+                        throw;
+                    }
                     catch (Exception ex)
                     {
                         content.LastProcessingError = ex.Message;
-                        await yTRepository.UpdateYTContentsAsync(content);
+
+                        try
+                        {
+                            await yTRepository.UpdateYTContentsAsync(content);
+                        }
+                        catch (Exception updateEx)
+                        {
+                            _logger.LogError(
+                                updateEx,
+                                "Failed to persist subtitle processing error for content ID {ContentId}.",
+                                content.Id);
+                            throw;
+                        }
+
                         _logger.LogWarning(ex, "Subtitle download failed for content ID {ContentId}.", content.Id);
                     }
                 }
             }
-            catch (Exception ex)
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
-                _logger.LogWarning(ex, "{Service} threw an exception.", nameof(SubtitleService));
+                _logger.LogInformation("{Service} was canceled.", nameof(SubtitleService));
+                throw;
             }
             finally
             {
-                Directory.Delete(tempDir, recursive: true);
+                TryDeleteDirectory(tempDir);
             }
         }
 
@@ -97,7 +120,7 @@ namespace ContentAggregator.API.Services.BackgroundServices
             }
         }
 
-        private async Task<string?> DownloadSubtitlesAsync(string videoId, string tempDir)
+        private async Task<string?> DownloadSubtitlesAsync(string videoId, string tempDir, CancellationToken stoppingToken)
         {
             string tempDirForSingleSub = CreateTempDirectory(tempDir);
 
@@ -113,14 +136,31 @@ namespace ContentAggregator.API.Services.BackgroundServices
             };
 
             using var process = new Process { StartInfo = processStartInfo };
-            process.Start();
+            try
+            {
+                process.Start();
+            }
+            catch (Win32Exception ex) // Win32Exception is cross-platform despite the name
+            {
+                throw new InvalidOperationException(
+                    $"Unable to start yt-dlp using '{_ytDlpExecutable}'. Ensure the executable exists and is callable.",
+                    ex);
+            }
+
+            await process.WaitForExitAsync(stoppingToken);
             var output = await process.StandardOutput.ReadToEndAsync();
-            await process.WaitForExitAsync();
 
             if (process.ExitCode != 0)
             {
                 var error = await process.StandardError.ReadToEndAsync();
-                throw new Exception($"yt-dlp error: {error}");
+                if (process.ExitCode == 1 && error.Contains("WARNING: ffmpeg not found."))
+                {
+                    _logger.LogInformation($"ffmpeg is not needed for subtitle download when we don't download the video itself. VideoId: {videoId}");
+                }
+                else
+                {
+                    throw new Exception($"yt-dlp exited with code {process.ExitCode}: {error}");
+                }
             }
 
             if (output.Contains("There are no subtitles for the requested languages", StringComparison.OrdinalIgnoreCase))
@@ -135,8 +175,25 @@ namespace ContentAggregator.API.Services.BackgroundServices
                 return null;
             }
 
-            var preferredGeorgian = files.FirstOrDefault(x => x.Contains(".ka.", StringComparison.OrdinalIgnoreCase));
+            var preferredGeorgian = files.FirstOrDefault(x => x.Contains(".ka-orig", StringComparison.OrdinalIgnoreCase));
             return preferredGeorgian ?? files.First();
+        }
+
+        private void TryDeleteDirectory(string path)
+        {
+            if (!Directory.Exists(path))
+            {
+                return;
+            }
+
+            try
+            {
+                Directory.Delete(path, recursive: true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _logger.LogWarning(ex, "Failed to clean up temporary directory '{Path}'.", path);
+            }
         }
 
         private string ResolveYtDlpExecutable(IConfiguration configuration)
