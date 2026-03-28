@@ -108,14 +108,18 @@ namespace ContentAggregator.API
             CreateDbIfNotExists(app.Services);
             RegisterRecurringJobs(app.Services);
 
-            app.UseCors("AllowSpecificOrigin");
-
-            // Configure the HTTP request pipeline.
             if (app.Environment.IsDevelopment())
             {
+                app.Lifetime.ApplicationStarted.Register(() =>
+                {
+                    EnqueueStartupPipeline(app.Services);
+                });
+
                 app.UseSwagger();
                 app.UseSwaggerUI();
             }
+
+            app.UseCors("AllowSpecificOrigin");
 
             app.UseHangfireDashboard("/hangfire");
             //app.UseMiddleware<ErrorHandlerMiddleware>();
@@ -161,6 +165,19 @@ namespace ContentAggregator.API
                 "pipeline:youtube-comment-publish",
                 job => job.ProcessOnceAsync(),
                 "*/10 * * * *");
+        }
+
+        private static void EnqueueStartupPipeline(IServiceProvider serviceProvider)
+        {
+            using var scope = serviceProvider.CreateScope();
+            var backgroundJobs = scope.ServiceProvider.GetRequiredService<IBackgroundJobClient>();
+
+            var discoveryJobId = backgroundJobs.Enqueue<YoutubeService>(job => job.ProcessOnceAsync());
+            var subtitleJobId = backgroundJobs.ContinueJobWith<SubtitleService>(discoveryJobId, job => job.ProcessOnceAsync());
+            var summaryJobId = backgroundJobs.ContinueJobWith<SummarizerService>(subtitleJobId, job => job.ProcessOnceAsync());
+
+            backgroundJobs.ContinueJobWith<FacebookService>(summaryJobId, job => job.ProcessOnceAsync());
+            backgroundJobs.ContinueJobWith<YoutubeCommentService>(summaryJobId, job => job.ProcessOnceAsync());
         }
 
         private static void CreateDbIfNotExists(IServiceProvider serviceProvider)
