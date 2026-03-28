@@ -1,10 +1,14 @@
-using ContentAggregator.Core.Interfaces;
+﻿using ContentAggregator.Core.Interfaces;
 using ContentAggregator.Core.Models;
 using ContentAggregator.Core.Services;
 using Hangfire;
 
 namespace ContentAggregator.API.Services.BackgroundServices
 {
+    /// <summary>
+    /// Publishes ready summaries and video links to the configured Facebook page,
+    /// then records publish success or failure per video.
+    /// </summary>
     public class FacebookService : BackgroundService
     {
         private readonly IServiceProvider _serviceProvider;

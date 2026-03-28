@@ -1,4 +1,4 @@
-using System.Net.Http.Headers;
+﻿using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using ContentAggregator.Core.Interfaces;
@@ -7,6 +7,10 @@ using Hangfire;
 
 namespace ContentAggregator.API.Services.BackgroundServices
 {
+    /// <summary>
+    /// Posts ready summaries as top-level YouTube comments using OAuth
+    /// credentials and stores comment IDs, timestamps, and publish errors.
+    /// </summary>
     public class YoutubeCommentService : BackgroundService
     {
         private readonly IServiceProvider _serviceProvider;

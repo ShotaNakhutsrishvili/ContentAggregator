@@ -8,12 +8,18 @@ using static ContentAggregator.API.Program;
 
 namespace ContentAggregator.API.Services.BackgroundServices
 {
+    /// <summary>
+    /// Discovers new videos for configured YouTube channels, applies keyword and
+    /// minimum-duration filters, and resolves previously unknown live durations
+    /// before persisting channel content.
+    /// </summary>
     public class YoutubeService : BackgroundService
     {
         private readonly HttpClient _httpClient;
         private readonly IServiceProvider _serviceProvider;
         private readonly string _apiKey;
         private readonly ILogger<YoutubeService> _logger;
+
         private readonly TimeSpan _minimumVideoLength = TimeSpan.FromMinutes(30);
 
         public YoutubeService(IHttpClientFactory httpClientFactory, IServiceProvider serviceProvider, IConfiguration configuration, ILogger<YoutubeService> logger)

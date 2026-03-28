@@ -5,6 +5,11 @@ using Hangfire;
 
 namespace ContentAggregator.API.Services.BackgroundServices
 {
+    /// <summary>
+    /// Downloads auto-subtitles (preferring Georgian, then English), normalizes
+    /// SRT into plain transcript text, and stores subtitle data for videos
+    /// awaiting summarization.
+    /// </summary>
     public class SubtitleService : BackgroundService
     {
         private readonly IServiceProvider _serviceProvider;

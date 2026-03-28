@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using ContentAggregator.Core.Entities;
@@ -8,6 +8,11 @@ using static ContentAggregator.API.Program;
 
 namespace ContentAggregator.API.Services.BackgroundServices
 {
+    /// <summary>
+    /// Generates Georgian summaries from cleaned transcripts via the configured
+    /// LLM endpoint, parses participant hints, and updates related feature links
+    /// and processing errors.
+    /// </summary>
     public class SummarizerService : BackgroundService
     {
         private readonly IServiceProvider _serviceProvider;
