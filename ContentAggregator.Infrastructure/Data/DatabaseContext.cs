@@ -40,6 +40,10 @@ namespace ContentAggregator.Infrastructure.Data
                 .HasOne(yc => yc.YTChannel)
                 .WithMany(yt => yt.YoutubeContents)
                 .HasForeignKey(yc => yc.ChannelId);
+
+            modelBuilder.Entity<YoutubeContent>()
+                .HasIndex(yc => yc.VideoId)
+                .IsUnique();
         }
     }
 }
