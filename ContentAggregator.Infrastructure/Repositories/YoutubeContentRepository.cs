@@ -24,29 +24,34 @@ namespace ContentAggregator.Infrastructure.Repositories
             return await _context.YoutubeContents.Where(x => x.NeedsRefetch).ToListAsync();
         }
 
-        public async Task<List<YoutubeContent>> GetYTContentsWithoutEngSRT()
+        public async Task<List<YoutubeContent>> GetYTContentsWithoutSubtitles()
         {
-            return await _context.YoutubeContents.Where(x => x.SubtitlesEngSRT == null && !x.NeedsRefetch).ToListAsync();
+            return await _context.YoutubeContents
+                .Where(x => string.IsNullOrEmpty(x.SubtitlesOrigSRT) && !x.NeedsRefetch)
+                .ToListAsync();
         }
 
-        public async Task<List<YoutubeContent>> GetYTContentsWithoutEngSummaries()
+        public async Task<List<YoutubeContent>> GetYTContentsWithoutSummaries()
         {
-            return await _context.YoutubeContents.Where(x => x.SubtitlesFiltered != null && x.VideoSummaryEng == null).ToListAsync();
-        }
-
-        public async Task<List<YoutubeContent>> GetYTContentsWithoutGeoSummaries()
-        {
-            return await _context.YoutubeContents.Where(x => x.SubtitlesFiltered != null && x.VideoSummaryGeo == null).ToListAsync();
+            return await _context.YoutubeContents
+                .Where(x => x.SubtitlesFiltered != null
+                            && (string.IsNullOrEmpty(x.VideoSummary)
+                                || string.IsNullOrEmpty(x.YoutubeCommentText)))
+                .ToListAsync();
         }
 
         public async Task<List<YoutubeContent>> GetYTContentsForFBPost()
         {
-            return await _context.YoutubeContents.Where(x => x.VideoSummaryGeo != null && !x.FbPosted).ToListAsync();
+            return await _context.YoutubeContents
+                .Where(x => !string.IsNullOrEmpty(x.VideoSummary) && !x.FbPosted)
+                .ToListAsync();
         }
 
         public async Task<List<YoutubeContent>> GetYTContentsForYoutubeCommentPost()
         {
-            return await _context.YoutubeContents.Where(x => x.VideoSummaryGeo != null && !x.YoutubeCommentPosted).ToListAsync();
+            return await _context.YoutubeContents
+                .Where(x => !string.IsNullOrEmpty(x.YoutubeCommentText) && !x.YoutubeCommentPosted)
+                .ToListAsync();
         }
 
         public async Task AddYTContents(List<YoutubeContent> contents)

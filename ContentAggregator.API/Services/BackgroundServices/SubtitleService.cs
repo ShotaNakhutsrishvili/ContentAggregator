@@ -1,15 +1,16 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using ContentAggregator.Core.Entities;
 using ContentAggregator.Core.Interfaces;
 using Hangfire;
 
 namespace ContentAggregator.API.Services.BackgroundServices
 {
     /// <summary>
-    /// Downloads auto-subtitles (preferring Georgian, then English), normalizes
-    /// SRT into plain transcript text, and stores subtitle data for videos
-    /// awaiting summarization.
+    /// Downloads manual/auto subtitles (preferring Georgian, then English, then
+    /// Russian), stores original SRT with detected language, and normalizes SRT
+    /// into plain transcript text for summarization.
     /// </summary>
     public class SubtitleService : BackgroundService
     {
@@ -42,7 +43,7 @@ namespace ContentAggregator.API.Services.BackgroundServices
             {
                 using var scope = _serviceProvider.CreateScope();
                 var yTRepository = scope.ServiceProvider.GetRequiredService<IYoutubeContentRepository>();
-                var youtubeContents = await yTRepository.GetYTContentsWithoutEngSRT();
+                var youtubeContents = await yTRepository.GetYTContentsWithoutSubtitles();
 
                 foreach (var content in youtubeContents)
                 {
@@ -64,7 +65,8 @@ namespace ContentAggregator.API.Services.BackgroundServices
                             continue;
                         }
 
-                        content.SubtitlesEngSRT = subtitleSRTString;
+                        content.SubtitlesOrigSRT = subtitleSRTString;
+                        content.SubtitleLanguage = ResolveSubtitleLanguageFromPath(subtitleSRTFile);
                         content.SubtitlesFiltered = SRTToText(subtitleSRTLines);
                         content.LastProcessingError = null;
                         await yTRepository.UpdateYTContentsAsync(content);
@@ -127,7 +129,7 @@ namespace ContentAggregator.API.Services.BackgroundServices
             var processStartInfo = new ProcessStartInfo
             {
                 FileName = _ytDlpExecutable,
-                Arguments = $"--write-sub --write-auto-sub --sub-langs \"en-orig,ka-orig\" --sub-format \"srt\" --skip-download \"https://www.youtube.com/watch?v={videoId}\"",
+                Arguments = $"--write-sub --write-auto-sub --sub-langs \"ka-orig,ka,en-orig,en,ru-orig,ru\" --sub-format \"srt\" --skip-download \"https://www.youtube.com/watch?v={videoId}\"",
                 WorkingDirectory = tempDirForSingleSub,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
@@ -147,12 +149,15 @@ namespace ContentAggregator.API.Services.BackgroundServices
                     ex);
             }
 
+            var outputTask = process.StandardOutput.ReadToEndAsync();
+            var errorTask = process.StandardError.ReadToEndAsync();
             await process.WaitForExitAsync(stoppingToken);
-            var output = await process.StandardOutput.ReadToEndAsync();
+
+            var output = await outputTask;
+            var error = await errorTask;
 
             if (process.ExitCode != 0)
             {
-                var error = await process.StandardError.ReadToEndAsync();
                 if (process.ExitCode == 1 && error.Contains("WARNING: ffmpeg not found."))
                 {
                     _logger.LogInformation($"ffmpeg is not needed for subtitle download when we don't download the video itself. VideoId: {videoId}");
@@ -163,7 +168,8 @@ namespace ContentAggregator.API.Services.BackgroundServices
                 }
             }
 
-            if (output.Contains("There are no subtitles for the requested languages", StringComparison.OrdinalIgnoreCase))
+            var combinedOutput = $"{output}{Environment.NewLine}{error}";
+            if (combinedOutput.Contains("There are no subtitles for the requested languages", StringComparison.OrdinalIgnoreCase))
             {
                 _logger.LogInformation("No subtitles were found for videoId {VideoId}.", videoId);
                 return null;
@@ -175,8 +181,9 @@ namespace ContentAggregator.API.Services.BackgroundServices
                 return null;
             }
 
-            var preferredGeorgian = files.FirstOrDefault(x => x.Contains(".ka-orig", StringComparison.OrdinalIgnoreCase));
-            return preferredGeorgian ?? files.First();
+            return files
+                .OrderBy(GetSubtitlePriority)
+                .First();
         }
 
         private void TryDeleteDirectory(string path)
@@ -275,6 +282,57 @@ namespace ContentAggregator.API.Services.BackgroundServices
             return string.IsNullOrWhiteSpace(line)
                    || int.TryParse(line.Trim(), out _)
                    || line.Contains("-->");
+        }
+
+        private static int GetSubtitlePriority(string subtitlePath)
+        {
+            var languageTag = GetLanguageTag(subtitlePath);
+
+            return languageTag switch
+            {
+                "ka-orig" => 0,
+                "ka" => 1,
+                "en-orig" => 2,
+                "en" => 3,
+                "ru-orig" => 4,
+                "ru" => 5,
+                _ => 10
+            };
+        }
+
+        private static SubtitleLanguage ResolveSubtitleLanguageFromPath(string subtitlePath)
+        {
+            var languageTag = GetLanguageTag(subtitlePath);
+            if (languageTag.StartsWith("ka", StringComparison.OrdinalIgnoreCase))
+            {
+                return SubtitleLanguage.Georgian;
+            }
+
+            if (languageTag.StartsWith("en", StringComparison.OrdinalIgnoreCase))
+            {
+                return SubtitleLanguage.English;
+            }
+
+            if (languageTag.StartsWith("ru", StringComparison.OrdinalIgnoreCase))
+            {
+                return SubtitleLanguage.Russian;
+            }
+
+            return string.IsNullOrWhiteSpace(languageTag)
+                ? SubtitleLanguage.Unknown
+                : SubtitleLanguage.Other;
+        }
+
+        private static string GetLanguageTag(string subtitlePath)
+        {
+            var withoutExtension = Path.GetFileNameWithoutExtension(subtitlePath);
+            var lastDotIndex = withoutExtension.LastIndexOf('.');
+            if (lastDotIndex < 0 || lastDotIndex == withoutExtension.Length - 1)
+            {
+                return string.Empty;
+            }
+
+            return withoutExtension[(lastDotIndex + 1)..].ToLowerInvariant();
         }
     }
 }

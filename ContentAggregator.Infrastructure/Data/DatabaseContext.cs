@@ -42,6 +42,10 @@ namespace ContentAggregator.Infrastructure.Data
                 .HasForeignKey(yc => yc.ChannelId);
 
             modelBuilder.Entity<YoutubeContent>()
+                .Property(yc => yc.SubtitleLanguage)
+                .HasConversion<byte>();
+
+            modelBuilder.Entity<YoutubeContent>()
                 .HasIndex(yc => yc.VideoId)
                 .IsUnique();
         }

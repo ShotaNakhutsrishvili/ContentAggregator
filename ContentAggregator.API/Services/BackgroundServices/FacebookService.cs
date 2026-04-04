@@ -48,7 +48,8 @@ namespace ContentAggregator.API.Services.BackgroundServices
                 foreach (var content in youtubeContents)
                 {
                     var postUrl = $"https://www.youtube.com/watch?v={content.VideoId}";
-                    var message = (content.VideoSummaryGeo ?? content.VideoSummaryEng) + $"\n\n{Constants.AISummaryDisclaimer}";
+                    var disclaimer = Constants.GetAiSummaryDisclaimer(content.SubtitleLanguage);
+                    var message = content.VideoSummary + $"\n\n{disclaimer}";
                     var publishResult = await _fbPoster.SharePost(_fbPageId, postUrl, message, stoppingToken);
 
                     if (!publishResult.Success)

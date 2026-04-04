@@ -11,10 +11,11 @@ namespace ContentAggregator.Core.Entities
         public TimeSpan VideoLength { get; set; }
         public DateTimeOffset VideoPublishedAt { get; set; }
         public bool NotRelevant { get; set; } = false; // Longer than required threshold but not political/social/etc.
-        public string? SubtitlesEngSRT { get; set; }
+        public string? SubtitlesOrigSRT { get; set; }
+        public SubtitleLanguage SubtitleLanguage { get; set; } = SubtitleLanguage.Unknown;
         public string? SubtitlesFiltered { get; set; }
-        public string? VideoSummaryEng { get; set; }
-        public string? VideoSummaryGeo { get; set; }
+        public string? VideoSummary { get; set; }
+        public string? YoutubeCommentText { get; set; }
         public string? AdditionalComments { get; set; }
         public bool FbPosted { get; set; } = false;
         public bool YoutubeCommentPosted { get; set; } = false;

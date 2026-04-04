@@ -6,9 +6,8 @@ namespace ContentAggregator.Core.Interfaces
     {
         Task<YoutubeContent?> GetYTContentsByIdAsync(int id);
         Task<List<YoutubeContent>> GetYTContentsNeedingRefetch();
-        Task<List<YoutubeContent>> GetYTContentsWithoutEngSRT();
-        Task<List<YoutubeContent>> GetYTContentsWithoutEngSummaries();
-        Task<List<YoutubeContent>> GetYTContentsWithoutGeoSummaries();
+        Task<List<YoutubeContent>> GetYTContentsWithoutSubtitles();
+        Task<List<YoutubeContent>> GetYTContentsWithoutSummaries();
         Task<List<YoutubeContent>> GetYTContentsForFBPost();
         Task<List<YoutubeContent>> GetYTContentsForYoutubeCommentPost();
         Task AddYTContentFeature(YoutubeContentFeature contentFeature);

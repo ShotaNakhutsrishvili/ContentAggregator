@@ -1,6 +1,7 @@
-﻿using System.Net.Http.Headers;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using ContentAggregator.Core.Entities;
 using ContentAggregator.Core.Interfaces;
 using ContentAggregator.Core.Models;
 using Hangfire;
@@ -57,7 +58,9 @@ namespace ContentAggregator.API.Services.BackgroundServices
 
                 foreach (var content in youtubeContents)
                 {
-                    var commentText = BuildCommentText(content.VideoSummaryGeo ?? content.VideoSummaryEng ?? string.Empty);
+                    var commentText = BuildCommentText(
+                        content.YoutubeCommentText ?? content.VideoSummary ?? string.Empty,
+                        content.SubtitleLanguage);
                     var publishResult = await PublishCommentAsync(content.VideoId, commentText, stoppingToken);
 
                     if (!publishResult.Success)
@@ -142,9 +145,10 @@ namespace ContentAggregator.API.Services.BackgroundServices
             }
         }
 
-        private static string BuildCommentText(string summary)
+        private static string BuildCommentText(string summary, SubtitleLanguage subtitleLanguage)
         {
-            var result = summary + Environment.NewLine + Environment.NewLine + Constants.AISummaryDisclaimer;
+            var disclaimer = Constants.GetAiSummaryDisclaimer(subtitleLanguage);
+            var result = summary + Environment.NewLine + Environment.NewLine + disclaimer;
             const int maxLen = 900;
             if (result.Length <= maxLen)
             {

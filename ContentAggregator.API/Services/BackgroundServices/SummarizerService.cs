@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using ContentAggregator.Core.Entities;
@@ -9,9 +9,8 @@ using static ContentAggregator.API.Program;
 namespace ContentAggregator.API.Services.BackgroundServices
 {
     /// <summary>
-    /// Generates Georgian summaries from cleaned transcripts via the configured
-    /// LLM endpoint, parses participant hints, and updates related feature links
-    /// and processing errors.
+    /// Generates language-preserving summaries and timestamped YouTube comment
+    /// text from subtitles, then updates participant links and processing state.
     /// </summary>
     public class SummarizerService : BackgroundService
     {
@@ -20,7 +19,11 @@ namespace ContentAggregator.API.Services.BackgroundServices
         private readonly ILogger<SummarizerService> _logger;
         private readonly string _lMStudioApiURL;
 
-        public SummarizerService(IServiceProvider serviceProvider, IHttpClientFactory httpClientFactory, IConfiguration configuration, ILogger<SummarizerService> logger)
+        public SummarizerService(
+            IServiceProvider serviceProvider,
+            IHttpClientFactory httpClientFactory,
+            IConfiguration configuration,
+            ILogger<SummarizerService> logger)
         {
             _serviceProvider = serviceProvider;
             _httpClient = httpClientFactory.CreateClient(HttpClientNames.LongTimeout);
@@ -44,35 +47,40 @@ namespace ContentAggregator.API.Services.BackgroundServices
                 var yTRepository = scope.ServiceProvider.GetRequiredService<IYoutubeContentRepository>();
                 var featureRepository = scope.ServiceProvider.GetRequiredService<IFeatureRepository>();
 
-                var youtubeContents = await yTRepository.GetYTContentsWithoutGeoSummaries();
+                var youtubeContents = await yTRepository.GetYTContentsWithoutSummaries();
                 var features = await featureRepository.GetAllFeaturesAsync(stoppingToken);
 
                 foreach (var content in youtubeContents)
                 {
-                    if (content.VideoSummaryGeo != null)
+                    if (!string.IsNullOrWhiteSpace(content.VideoSummary)
+                        && !string.IsNullOrWhiteSpace(content.YoutubeCommentText))
                     {
                         continue;
                     }
 
                     try
                     {
-                        _logger.LogInformation("{Now}: Requesting Georgian summary for youtube content ID {ContentId}.", DateTimeOffset.UtcNow, content.Id);
-                        var generatedSummaryWithParticipants = await GenerateSummaryAsync(content.SubtitlesFiltered!);
+                        _logger.LogInformation(
+                            "{Now}: Requesting summary for youtube content ID {ContentId}.",
+                            DateTimeOffset.UtcNow,
+                            content.Id);
 
-                        var firstLineEndIndex = generatedSummaryWithParticipants.IndexOf('\n');
-                        if (firstLineEndIndex <= 0)
-                        {
-                            content.VideoSummaryGeo = generatedSummaryWithParticipants.Trim();
-                        }
-                        else
-                        {
-                            content.VideoSummaryGeo = generatedSummaryWithParticipants.Substring(firstLineEndIndex + 1).Trim();
-                            ParseParticipants(generatedSummaryWithParticipants, content, features);
-                        }
+                        var generated = await GenerateSummaryAsync(
+                            content.SubtitlesFiltered!,
+                            content.SubtitlesOrigSRT,
+                            content.SubtitleLanguage);
 
+                        content.VideoSummary = generated.VideoSummary;
+                        content.YoutubeCommentText = generated.YoutubeCommentText;
                         content.LastProcessingError = null;
+
+                        ParseParticipants(generated.Participants, content, features);
+
                         await yTRepository.UpdateYTContentsAsync(content);
-                        _logger.LogInformation("{Now}: Saved Georgian summary for youtube content ID {ContentId}.", DateTimeOffset.UtcNow, content.Id);
+                        _logger.LogInformation(
+                            "{Now}: Saved summary for youtube content ID {ContentId}.",
+                            DateTimeOffset.UtcNow,
+                            content.Id);
                     }
                     catch (Exception ex)
                     {
@@ -97,23 +105,27 @@ namespace ContentAggregator.API.Services.BackgroundServices
             }
         }
 
-        private async Task<string> GenerateSummaryAsync(string subtitles)
+        private async Task<GeneratedSummaryPayload> GenerateSummaryAsync(
+            string filteredTranscript,
+            string? originalSrt,
+            SubtitleLanguage subtitleLanguage)
         {
             if (string.IsNullOrWhiteSpace(_lMStudioApiURL) || _lMStudioApiURL == "/")
             {
                 throw new InvalidOperationException("LM Studio API URL is not configured.");
             }
 
+            var userPrompt = BuildUserPrompt(filteredTranscript, originalSrt, subtitleLanguage);
             var request = new
             {
                 model = "meta-llama-3.1-8b-instruct",
                 messages = new[]
                 {
                     new { role = "system", content = SummarizeInstruction },
-                    new { role = "user", content = subtitles }
+                    new { role = "user", content = userPrompt }
                 },
                 temperature = 0.6,
-                max_tokens = 1000
+                max_tokens = 1200
             };
             var json = JsonSerializer.Serialize(request);
             var content = new StringContent(json, Encoding.UTF8, "application/json");
@@ -129,18 +141,134 @@ namespace ContentAggregator.API.Services.BackgroundServices
                 new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
                 ?? throw new InvalidOperationException("Unexpected empty response from LLM.");
 
-            return deserializedResponse.Choices[0].Message.Content;
+            if (deserializedResponse.Choices.Length == 0)
+            {
+                throw new InvalidOperationException("LLM returned zero choices.");
+            }
+
+            var llmContent = deserializedResponse.Choices[0].Message.Content;
+            return ParseGeneratedPayload(llmContent);
         }
 
-        private void ParseParticipants(string summary, YoutubeContent yTContent, IEnumerable<Feature> features)
+        private static string BuildUserPrompt(
+            string filteredTranscript,
+            string? originalSrt,
+            SubtitleLanguage subtitleLanguage)
         {
-            var firstLineEndIndex = summary.IndexOf('\n');
-            if (firstLineEndIndex <= 0)
+            var languageHint = subtitleLanguage switch
+            {
+                SubtitleLanguage.Georgian => "Georgian",
+                SubtitleLanguage.English => "English",
+                SubtitleLanguage.Russian => "Russian",
+                SubtitleLanguage.Other => "Unknown specific language (infer from text)",
+                _ => "Unknown"
+            };
+
+            return $"""
+Language hint: {languageHint}
+
+TIMED_SRT:
+{originalSrt ?? ""}
+
+FILTERED_TRANSCRIPT:
+{filteredTranscript}
+""";
+        }
+
+        private GeneratedSummaryPayload ParseGeneratedPayload(string llmContent)
+        {
+            var options = new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            };
+
+            var direct = TryGetUsablePayload(llmContent, options);
+            if (direct != null)
+            {
+                return direct;
+            }
+
+            var extractedJson = TryExtractJsonObject(llmContent);
+            var extracted = extractedJson != null ? TryGetUsablePayload(extractedJson, options) : null;
+            if (extracted != null)
+            {
+                return extracted;
+            }
+
+            throw new InvalidOperationException(
+                $"LLM response is not parseable or is missing required fields. Raw output: {Truncate(llmContent, 500)}");
+        }
+
+        private static GeneratedSummaryPayload? TryDeserializePayload(string json, JsonSerializerOptions options)
+        {
+            try
+            {
+                return JsonSerializer.Deserialize<GeneratedSummaryPayload>(json, options);
+            }
+            catch (JsonException)
+            {
+                return null;
+            }
+        }
+
+        private static string? TryExtractJsonObject(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return null;
+            }
+
+            var start = text.IndexOf('{');
+            var end = text.LastIndexOf('}');
+            if (start < 0 || end <= start)
+            {
+                return null;
+            }
+
+            return text[start..(end + 1)];
+        }
+
+        private static GeneratedSummaryPayload NormalizePayload(GeneratedSummaryPayload payload)
+        {
+            payload.Participants = payload.Participants?.Trim() ?? string.Empty;
+            payload.VideoSummary = payload.VideoSummary?.Trim() ?? string.Empty;
+            payload.YoutubeCommentText = payload.YoutubeCommentText?.Trim() ?? string.Empty;
+
+            return payload;
+        }
+
+        private static GeneratedSummaryPayload? TryGetUsablePayload(string json, JsonSerializerOptions options)
+        {
+            var payload = TryDeserializePayload(json, options);
+            if (payload == null)
+            {
+                return null;
+            }
+
+            var normalized = NormalizePayload(payload);
+            return !string.IsNullOrWhiteSpace(normalized.VideoSummary)
+                   && !string.IsNullOrWhiteSpace(normalized.YoutubeCommentText)
+                ? normalized
+                : null;
+        }
+
+        private static string Truncate(string value, int maxLen)
+        {
+            if (string.IsNullOrEmpty(value) || value.Length <= maxLen)
+            {
+                return value;
+            }
+
+            return value[..maxLen];
+        }
+
+        private void ParseParticipants(string participants, YoutubeContent yTContent, IEnumerable<Feature> features)
+        {
+            if (string.IsNullOrWhiteSpace(participants))
             {
                 return;
             }
 
-            string participants = summary.Substring(0, firstLineEndIndex).Trim();
             yTContent.AdditionalComments = participants;
             var listOfParticipants = participants.Split(new[] { ',', ' ' }, StringSplitOptions.RemoveEmptyEntries);
 
@@ -189,13 +317,26 @@ namespace ContentAggregator.API.Services.BackgroundServices
             }
         }
 
-        private const string SummarizeInstruction = """
-შენი დავალებაა პოდკასტების, რადიო გადაცემების და ინტერვიუების შეჯამება ქართულად.
-პირველ ხაზზე დაწერე მონაწილეების გვარები მძიმით გამოყოფილი და სხვა არაფერი.
+        private sealed class GeneratedSummaryPayload
+        {
+            public string Participants { get; set; } = string.Empty;
+            public string VideoSummary { get; set; } = string.Empty;
+            public string YoutubeCommentText { get; set; } = string.Empty;
+        }
 
-შემდეგ აბზაცში დაწერე მოკლე, ზუსტი შეჯამება ქართულად ისე, რომ მონაწილეების სახელები არ გამოიყენო.
-გამოიყენე ფრაზები: "მონაწილეები", "საუბარში", "აღინიშნა, რომ...".
-მთავარია თემები, იდეები და დასკვნები.
+        private const string SummarizeInstruction = """
+You are given a podcast/interview transcript.
+Return ONLY valid JSON with this schema:
+{
+  "participants": "comma-separated last names only (can be empty string)",
+  "videoSummary": "short neutral summary in the same language as transcript",
+  "youtubeCommentText": "broad timestamped outline in the same language, format each line like MM:SS - point"
+}
+
+Rules:
+- Keep output language the same as transcript language.
+- Use around 10 broad timestamp lines in youtubeCommentText. If the subjects change a lot, then use more.
+- Do not include markdown fences.
 """;
     }
 }
