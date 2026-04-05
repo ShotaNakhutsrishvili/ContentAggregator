@@ -1,5 +1,6 @@
 using ContentAggregator.Application.Interfaces;
 using ContentAggregator.Application.Services.Features;
+using ContentAggregator.Application.Services.Subtitles;
 using ContentAggregator.Application.Services.Summarization;
 using ContentAggregator.Application.Services.Youtube;
 using ContentAggregator.Application.Services.YoutubeContents;
@@ -16,6 +17,7 @@ using Hangfire.PostgreSql;
 using System.Security.Cryptography.X509Certificates;
 using dotenv.net;
 using Microsoft.Extensions.Options;
+using ContentAggregator.Infrastructure.Services.Subtitles;
 using ContentAggregator.Infrastructure.Services.Summarization;
 using ContentAggregator.Infrastructure.Services.Youtube;
 
@@ -73,10 +75,15 @@ namespace ContentAggregator.API
             builder.Services.AddScoped<IYTChannelRepository, YTChannelRepository>();
             builder.Services.AddScoped<IYoutubeContentRepository, YoutubeContentRepository>();
             builder.Services.AddScoped<IFeatureService, FeatureService>();
+            builder.Services.AddScoped<ISubtitleWorkflow, SubtitleWorkflow>();
+            builder.Services.AddScoped<ISubtitleDownloader, YtDlpSubtitleDownloader>();
             builder.Services.AddScoped<ISummarizationWorkflow, SummarizationWorkflow>();
             builder.Services.AddScoped<IYoutubeChannelService, YoutubeChannelService>();
             builder.Services.AddScoped<IYoutubeDiscoveryWorkflow, YoutubeDiscoveryWorkflow>();
             builder.Services.AddScoped<IYoutubeContentQueryService, YoutubeContentQueryService>();
+            builder.Services
+                .AddOptions<YtDlpOptions>()
+                .Bind(configuration.GetSection(YtDlpOptions.SectionName));
             builder.Services
                 .AddOptions<LmStudioOptions>()
                 .Bind(configuration.GetSection(LmStudioOptions.SectionName))
