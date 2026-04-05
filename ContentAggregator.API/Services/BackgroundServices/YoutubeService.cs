@@ -1,10 +1,7 @@
-﻿using Newtonsoft.Json;
-using System.Text.RegularExpressions;
-using ContentAggregator.Application.Interfaces;
+﻿using ContentAggregator.Application.Interfaces;
+using ContentAggregator.Application.Models;
 using ContentAggregator.Core.Entities;
-using ContentAggregator.Core.Models.YTModels;
 using Hangfire;
-using static ContentAggregator.API.Program;
 
 namespace ContentAggregator.API.Services.BackgroundServices
 {
@@ -15,19 +12,20 @@ namespace ContentAggregator.API.Services.BackgroundServices
     /// </summary>
     public class YoutubeService : BackgroundService
     {
-        private readonly HttpClient _httpClient;
         private readonly IServiceProvider _serviceProvider;
-        private readonly string _apiKey;
+        private readonly IYoutubeMetadataClient _youtubeMetadataClient;
         private readonly ILogger<YoutubeService> _logger;
 
         private readonly TimeSpan _minimumVideoLength = TimeSpan.FromMinutes(30);
 
-        public YoutubeService(IHttpClientFactory httpClientFactory, IServiceProvider serviceProvider, IConfiguration configuration, ILogger<YoutubeService> logger)
+        public YoutubeService(
+            IServiceProvider serviceProvider,
+            IYoutubeMetadataClient youtubeMetadataClient,
+            ILogger<YoutubeService> logger)
         {
-            _httpClient = httpClientFactory.CreateClient(HttpClientNames.Default);
             _serviceProvider = serviceProvider;
+            _youtubeMetadataClient = youtubeMetadataClient;
             _logger = logger;
-            _apiKey = configuration["YoutubeAccessToken"]!;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -71,31 +69,30 @@ namespace ContentAggregator.API.Services.BackgroundServices
                 return;
             }
 
-            var joinedVideoIds = string.Join(",", videosNeedingRefetch.Select(x => x.VideoId));
-            var requestUrl = $"https://youtube.googleapis.com/youtube/v3/videos?id={joinedVideoIds}&key={_apiKey}&part=contentDetails";
-            var response = await _httpClient.GetAsync(requestUrl);
-
-            if (!response.IsSuccessStatusCode)
+            IReadOnlyList<YoutubeVideoMetadata> videos;
+            try
             {
-                _logger.LogWarning($"Failed to fetch video details: {response.StatusCode}");
+                videos = await _youtubeMetadataClient.GetVideosAsync(
+                    videosNeedingRefetch.Select(x => x.VideoId),
+                    stoppingToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to fetch video details for refetch.");
                 return;
             }
 
-            var content = await response.Content.ReadAsStringAsync();
-            var videosResponse = JsonConvert.DeserializeObject<YTVideosResponse>(content)!;
-
-            foreach (var video in videosResponse.Items)
+            foreach (var video in videos)
             {
-                var duration = ParseIso8601Duration(video.ContentDetails!.Duration);
-                var ytContent = videosNeedingRefetch.Single(x => x.VideoId == video.Id);
+                var ytContent = videosNeedingRefetch.Single(x => x.VideoId == video.VideoId);
 
-                if (duration > _minimumVideoLength)
+                if (video.VideoLength > _minimumVideoLength)
                 {
                     ytContent.NeedsRefetch = false;
-                    ytContent.VideoLength = duration;
+                    ytContent.VideoLength = video.VideoLength;
                     await yTContentRepository.UpdateYTContentsAsync(ytContent);
                 }
-                else if (duration != TimeSpan.Zero) // if not zero, but greater than minimum, delete it
+                else if (video.VideoLength != TimeSpan.Zero) // if resolved and shorter than minimum, delete it
                 {
                     await yTContentRepository.DeleteYTContentAsync(ytContent.Id, stoppingToken);
                 }
@@ -127,7 +124,7 @@ namespace ContentAggregator.API.Services.BackgroundServices
         {
             _logger.LogInformation($"Fetching YouTube contents for channel {channel.Id}.");
 
-            var youtubeContents = await FetchYoutubeContentsAsync(channel); // TODO: This might throw exception. Need to encapsulate the background service in try-catch.
+            var youtubeContents = await FetchYoutubeContentsAsync(channel, stoppingToken);
             if (youtubeContents.Any())
             {
                 _logger.LogInformation($"Fetched {youtubeContents.Count} new videos for channel {channel.Id}.");
@@ -142,152 +139,79 @@ namespace ContentAggregator.API.Services.BackgroundServices
             }
         }
 
-        private async Task<List<YoutubeContent>> FetchYoutubeContentsAsync(YTChannel channel)
+        private async Task<List<YoutubeContent>> FetchYoutubeContentsAsync(YTChannel channel, CancellationToken cancellationToken)
         {
-            var requestUrl = GetSearchEndpointRequestUri(channel.Id, channel.LastPublishedAt);
-            var response = await _httpClient.GetAsync(requestUrl);
-
-            if (!response.IsSuccessStatusCode)
+            try
             {
-                var errorContent = await response.Content.ReadAsStringAsync();
-                _logger.LogWarning($"Failed to fetch YouTube contents: {response.StatusCode} - {errorContent}");
-
+                var searchResults = await _youtubeMetadataClient.SearchChannelVideosAsync(
+                    channel.Id,
+                    channel.LastPublishedAt,
+                    cancellationToken);
+                var filteredItems = FilterByKeywords(searchResults, channel.TitleKeywords);
+                return await MapToYoutubeContentsAsync(filteredItems, channel, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to fetch YouTube contents for channel {ChannelId}.", channel.Id);
                 return new List<YoutubeContent>();
             }
-            var content = await response.Content.ReadAsStringAsync();
-            var searchResponse = JsonConvert.DeserializeObject<YTSearchResponse>(content);
-
-            var filteredItems = FilterByKeywords(searchResponse!.Items, channel.TitleKeywords);
-
-            return await MapToYoutubeContentsAsync(filteredItems, channel);
         }
 
-        private async Task<List<YoutubeContent>> MapToYoutubeContentsAsync(List<SearchItem> searchItems, YTChannel channel)
-        {
-            var longerVideos = await FetchLongerVideosAsync(searchItems, _minimumVideoLength);
-            if (!longerVideos.Any())
-            {
-                return new List<YoutubeContent>();
-            }
-
-            return longerVideos.Select(video => new YoutubeContent
-            {
-                VideoId = video.VideoId,
-                VideoTitle = video.VideoTitle,
-                ChannelId = channel.Id,
-                VideoLength = video.VideoLength,
-                VideoPublishedAt = video.PublishedAt,
-                NeedsRefetch = video.VideoLength == TimeSpan.Zero
-            }).ToList();
-        }
-
-        private async Task<List<(string VideoId, string VideoTitle, DateTimeOffset PublishedAt, TimeSpan VideoLength)>> FetchLongerVideosAsync(List<SearchItem> searchItems, TimeSpan minLength)
+        private async Task<List<YoutubeContent>> MapToYoutubeContentsAsync(
+            IReadOnlyList<YoutubeChannelVideoSearchMatch> searchItems,
+            YTChannel channel,
+            CancellationToken cancellationToken)
         {
             if (!searchItems.Any())
             {
-                return new List<(string, string, DateTimeOffset, TimeSpan)>();
+                return new List<YoutubeContent>();
             }
 
-            var videoIds = string.Join(",", searchItems.Select(x => x.Id.VideoId));
+            var videosById = (await _youtubeMetadataClient.GetVideosAsync(
+                    searchItems.Select(x => x.VideoId),
+                    cancellationToken))
+                .ToDictionary(x => x.VideoId, StringComparer.Ordinal);
 
-            var requestUrl = $"https://youtube.googleapis.com/youtube/v3/videos?id={videoIds}&key={_apiKey}&part=contentDetails";
-            var response = await _httpClient.GetAsync(requestUrl);
-
-            if (!response.IsSuccessStatusCode)
+            if (!videosById.Any())
             {
-                _logger.LogWarning($"Failed to fetch video details: {response.StatusCode}");
-                return new List<(string, string, DateTimeOffset, TimeSpan)>();
+                return new List<YoutubeContent>();
             }
 
-            var content = await response.Content.ReadAsStringAsync();
-            var videosResponse = JsonConvert.DeserializeObject<YTVideosResponse>(content)!;
-
-            return videosResponse.Items
-                .Select(video => new
+            return searchItems
+                .Where(searchItem =>
+                    videosById.TryGetValue(searchItem.VideoId, out var video)
+                    && (video.VideoLength > _minimumVideoLength || video.VideoLength == TimeSpan.Zero))
+                .Select(searchItem =>
                 {
-                    VideoId = video.Id,
-                    Duration = ParseIso8601Duration(video.ContentDetails!.Duration),
-                    SearchItem = searchItems.Single(x => x.Id.VideoId == video.Id)
+                    var video = videosById[searchItem.VideoId];
+                    return new YoutubeContent
+                    {
+                        VideoId = searchItem.VideoId,
+                        VideoTitle = searchItem.Title,
+                        ChannelId = channel.Id,
+                        VideoLength = video.VideoLength,
+                        VideoPublishedAt = searchItem.PublishedAt,
+                        NeedsRefetch = video.VideoLength == TimeSpan.Zero
+                    };
                 })
-                .Where(x => x.Duration > minLength || x.Duration == TimeSpan.Zero)
-                .Select(x => (
-                    x.VideoId,
-                    x.SearchItem.Snippet.Title,
-                    x.SearchItem.Snippet.PublishedAt,
-                    x.Duration
-                ))
                 .ToList();
         }
 
-        public static TimeSpan ParseIso8601Duration(string duration) // TODO: add unit tests for edge cases.
-        {
-            // Some YouTube live streams may report "P0D" while in progress.
-            if (string.IsNullOrEmpty(duration) || duration == "P0D")
-            {
-                // Think of possible solutions. 1. message broker.
-                // 2. Setting LastPublishedDate to lower than live. Risks duplicating newer videos that were added after live started but before live finished.
-                // 2. might need additional DB trips to check whether such videos exist. Otherwise, don't add newer than livestream videos.
-                return TimeSpan.Zero;
-            }
-
-            if (!duration.StartsWith("PT"))
-                throw new FormatException("Invalid duration format. Expected 'PT' prefix.");
-
-            int hours = 0;
-            int minutes = 0;
-            int seconds = 0;
-
-            string timePart = duration.Substring(2); // Remove "PT"
-            var matches = Regex.Matches(timePart, @"(\d+)(H|M|S)");
-
-            foreach (Match match in matches)
-            {
-                int value = int.Parse(match.Groups[1].Value);
-                string unit = match.Groups[2].Value;
-
-                switch (unit)
-                {
-                    case "H":
-                        hours = value;
-                        break;
-                    case "M":
-                        minutes = value;
-                        break;
-                    case "S":
-                        seconds = value;
-                        break;
-                }
-            }
-
-            return new TimeSpan(hours, minutes, seconds);
-        }
-
-        public static List<SearchItem> FilterByKeywords(List<SearchItem> items, string? keywords)
+        public static List<YoutubeChannelVideoSearchMatch> FilterByKeywords(
+            IReadOnlyList<YoutubeChannelVideoSearchMatch> items,
+            string? keywords)
         {
             if (string.IsNullOrWhiteSpace(keywords))
             {
-                return items;
+                return items.ToList();
             }
 
             var keywordList = keywords.Split(';').Select(k => k.Trim()).ToList();
 
             return items.Where(x => keywordList.Any(keyword =>
-                x.Snippet.Title.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
-                x.Snippet.Description.Contains(keyword, StringComparison.OrdinalIgnoreCase)))
+                x.Title.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
+                x.Description.Contains(keyword, StringComparison.OrdinalIgnoreCase)))
                 .ToList();
-        }
-
-        private Uri GetSearchEndpointRequestUri(string channelId, DateTimeOffset? date)
-        {
-            var baseUrl = $"https://youtube.googleapis.com/youtube/v3/search?key={_apiKey}&channelId={channelId}&part=snippet&order=date";
-
-            if (date.HasValue)
-            {
-                string formattedDate = date.Value.AddSeconds(1).ToString("yyyy-MM-ddTHH:mm:ssZ"); // Youtube demands RFC 3339 format for this endpoint.
-                return new Uri($"{baseUrl}&publishedAfter={formattedDate}");
-            }
-
-            return new Uri($"{baseUrl}&maxResults=25");
         }
     }
 }

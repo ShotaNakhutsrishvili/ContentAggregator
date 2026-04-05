@@ -1,6 +1,7 @@
 using ContentAggregator.Application.Interfaces;
 using ContentAggregator.Application.Services.Features;
 using ContentAggregator.Application.Services.Summarization;
+using ContentAggregator.Application.Services.Youtube;
 using ContentAggregator.Application.Services.YoutubeContents;
 using ContentAggregator.Infrastructure.Repositories;
 using Microsoft.EntityFrameworkCore;
@@ -16,6 +17,7 @@ using System.Security.Cryptography.X509Certificates;
 using dotenv.net;
 using Microsoft.Extensions.Options;
 using ContentAggregator.Infrastructure.Services.Summarization;
+using ContentAggregator.Infrastructure.Services.Youtube;
 
 namespace ContentAggregator.API
 {
@@ -72,6 +74,7 @@ namespace ContentAggregator.API
             builder.Services.AddScoped<IYoutubeContentRepository, YoutubeContentRepository>();
             builder.Services.AddScoped<IFeatureService, FeatureService>();
             builder.Services.AddScoped<ISummarizationWorkflow, SummarizationWorkflow>();
+            builder.Services.AddScoped<IYoutubeChannelService, YoutubeChannelService>();
             builder.Services.AddScoped<IYoutubeContentQueryService, YoutubeContentQueryService>();
             builder.Services
                 .AddOptions<LmStudioOptions>()
@@ -81,6 +84,16 @@ namespace ContentAggregator.API
                     if (string.IsNullOrWhiteSpace(options.BaseUrl))
                     {
                         options.BaseUrl = configuration["LMStudioApiURL"] ?? configuration["LMSTUDIO_API_URL"] ?? string.Empty;
+                    }
+                });
+            builder.Services
+                .AddOptions<YoutubeApiOptions>()
+                .Bind(configuration.GetSection(YoutubeApiOptions.SectionName))
+                .PostConfigure(options =>
+                {
+                    if (string.IsNullOrWhiteSpace(options.ApiKey))
+                    {
+                        options.ApiKey = configuration["YoutubeAccessToken"] ?? string.Empty;
                     }
                 });
 
@@ -103,6 +116,11 @@ namespace ContentAggregator.API
                 {
                     client.BaseAddress = baseAddress;
                 }
+            });
+            builder.Services.AddHttpClient<IYoutubeMetadataClient, YoutubeMetadataClient>(client =>
+            {
+                client.BaseAddress = new Uri("https://www.googleapis.com/youtube/v3/");
+                client.Timeout = TimeSpan.FromMinutes(2);
             });
 
             builder.Services.AddSingleton<FbPoster>(provider =>
