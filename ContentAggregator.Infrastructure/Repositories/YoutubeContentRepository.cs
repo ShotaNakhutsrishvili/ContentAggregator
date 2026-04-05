@@ -1,4 +1,5 @@
 ﻿using ContentAggregator.Application.Interfaces;
+using ContentAggregator.Application.Models;
 using ContentAggregator.Core.Entities;
 using ContentAggregator.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -89,6 +90,50 @@ namespace ContentAggregator.Infrastructure.Repositories
             _context.YoutubeContents.Remove(yTContent);
             await _context.SaveChangesAsync(cancellationToken);
             return true;
+        }
+
+        public async Task<PagedYoutubeContentsResult> GetPagedAsync(
+            int page,
+            int pageSize,
+            string? channelId,
+            CancellationToken cancellationToken)
+        {
+            var query = _context.YoutubeContents
+                .AsNoTracking()
+                .Include(x => x.YTChannel)
+                .Where(x => !x.NotRelevant);
+
+            if (!string.IsNullOrWhiteSpace(channelId))
+            {
+                query = query.Where(x => x.ChannelId == channelId);
+            }
+
+            var total = await query.CountAsync(cancellationToken);
+
+            var items = await query
+                .OrderByDescending(x => x.VideoPublishedAt)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .Select(x => new YoutubeContentListItem(
+                    x.Id,
+                    x.VideoId,
+                    x.VideoTitle,
+                    x.ChannelId,
+                    x.YTChannel != null ? x.YTChannel.Name : null,
+                    x.VideoPublishedAt,
+                    x.VideoLength,
+                    x.SubtitleLanguage,
+                    x.VideoSummary,
+                    x.SubtitlesFiltered != null,
+                    x.VideoSummary != null && x.VideoSummary != string.Empty,
+                    x.FbPosted,
+                    x.YoutubeCommentText != null && x.YoutubeCommentText != string.Empty,
+                    x.YoutubeCommentPosted,
+                    x.YoutubeCommentId,
+                    x.LastProcessingError))
+                .ToListAsync(cancellationToken);
+
+            return new PagedYoutubeContentsResult(total, page, pageSize, items);
         }
     }
 }

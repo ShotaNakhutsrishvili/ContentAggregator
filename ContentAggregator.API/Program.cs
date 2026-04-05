@@ -1,6 +1,7 @@
 using ContentAggregator.Application.Interfaces;
 using ContentAggregator.Application.Services.Features;
 using ContentAggregator.Application.Services.Summarization;
+using ContentAggregator.Application.Services.YoutubeContents;
 using ContentAggregator.Infrastructure.Repositories;
 using Microsoft.EntityFrameworkCore;
 using ContentAggregator.Infrastructure.Data;
@@ -71,6 +72,7 @@ namespace ContentAggregator.API
             builder.Services.AddScoped<IYoutubeContentRepository, YoutubeContentRepository>();
             builder.Services.AddScoped<IFeatureService, FeatureService>();
             builder.Services.AddScoped<ISummarizationWorkflow, SummarizationWorkflow>();
+            builder.Services.AddScoped<IYoutubeContentQueryService, YoutubeContentQueryService>();
             builder.Services
                 .AddOptions<LmStudioOptions>()
                 .Bind(configuration.GetSection(LmStudioOptions.SectionName))

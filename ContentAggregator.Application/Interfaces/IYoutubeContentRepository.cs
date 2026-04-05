@@ -1,4 +1,5 @@
 using ContentAggregator.Core.Entities;
+using ContentAggregator.Application.Models;
 
 namespace ContentAggregator.Application.Interfaces
 {
@@ -15,5 +16,6 @@ namespace ContentAggregator.Application.Interfaces
         Task UpdateYTContentsAsync(YoutubeContent yTContent);
         Task UpdateYTContentsRangeAsync(List<YoutubeContent> yTContents);
         Task<bool> DeleteYTContentAsync(int id, CancellationToken cancellationToken);
+        Task<PagedYoutubeContentsResult> GetPagedAsync(int page, int pageSize, string? channelId, CancellationToken cancellationToken);
     }
 }
