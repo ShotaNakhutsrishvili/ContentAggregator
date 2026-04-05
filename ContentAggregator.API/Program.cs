@@ -1,4 +1,5 @@
 using ContentAggregator.Application.Interfaces;
+using ContentAggregator.Application.Services.Facebook;
 using ContentAggregator.Application.Services.Features;
 using ContentAggregator.Application.Services.Subtitles;
 using ContentAggregator.Application.Services.Summarization;
@@ -11,13 +12,13 @@ using ContentAggregator.Infrastructure.Data;
 using ContentAggregator.API.Services;
 using Microsoft.AspNetCore.Mvc;
 using ContentAggregator.API.Services.Middlewares;
-using ContentAggregator.Core.Services;
 using ContentAggregator.API.Services.BackgroundServices;
 using Hangfire;
 using Hangfire.PostgreSql;
 using System.Security.Cryptography.X509Certificates;
 using dotenv.net;
 using Microsoft.Extensions.Options;
+using ContentAggregator.Infrastructure.Services.Facebook;
 using ContentAggregator.Infrastructure.Services.Subtitles;
 using ContentAggregator.Infrastructure.Services.Summarization;
 using ContentAggregator.Infrastructure.Services.Youtube;
@@ -77,6 +78,7 @@ namespace ContentAggregator.API
             builder.Services.AddScoped<IYTChannelRepository, YTChannelRepository>();
             builder.Services.AddScoped<IYoutubeContentRepository, YoutubeContentRepository>();
             builder.Services.AddScoped<IFeatureService, FeatureService>();
+            builder.Services.AddScoped<IFacebookPublishingWorkflow, FacebookPublishingWorkflow>();
             builder.Services.AddScoped<ISubtitleWorkflow, SubtitleWorkflow>();
             builder.Services.AddScoped<ISubtitleDownloader, YtDlpSubtitleDownloader>();
             builder.Services.AddScoped<ISummarizationWorkflow, SummarizationWorkflow>();
@@ -84,6 +86,21 @@ namespace ContentAggregator.API
             builder.Services.AddScoped<IYoutubeCommentWorkflow, YoutubeCommentWorkflow>();
             builder.Services.AddScoped<IYoutubeDiscoveryWorkflow, YoutubeDiscoveryWorkflow>();
             builder.Services.AddScoped<IYoutubeContentQueryService, YoutubeContentQueryService>();
+            builder.Services
+                .AddOptions<FacebookOptions>()
+                .Bind(configuration.GetSection(FacebookOptions.SectionName))
+                .PostConfigure(options =>
+                {
+                    if (string.IsNullOrWhiteSpace(options.AccessToken))
+                    {
+                        options.AccessToken = configuration["FacebookAccessToken"] ?? string.Empty;
+                    }
+
+                    if (string.IsNullOrWhiteSpace(options.PageId))
+                    {
+                        options.PageId = configuration["FbPageId"] ?? string.Empty;
+                    }
+                });
             builder.Services
                 .AddOptions<YtDlpOptions>()
                 .Bind(configuration.GetSection(YtDlpOptions.SectionName));
@@ -123,6 +140,11 @@ namespace ContentAggregator.API
             {
                 client.Timeout = TimeSpan.FromMinutes(40);
             });
+            builder.Services.AddHttpClient<IFacebookPublisher, FacebookPublisher>(client =>
+            {
+                client.BaseAddress = new Uri("https://graph.facebook.com/");
+                client.Timeout = TimeSpan.FromMinutes(2);
+            });
             builder.Services.AddHttpClient<ISummaryGenerator, LmStudioSummaryGenerator>((provider, client) =>
             {
                 var options = provider.GetRequiredService<IOptions<LmStudioOptions>>().Value;
@@ -143,13 +165,6 @@ namespace ContentAggregator.API
             {
                 client.BaseAddress = new Uri("https://www.googleapis.com/youtube/v3/");
                 client.Timeout = TimeSpan.FromMinutes(2);
-            });
-
-            builder.Services.AddSingleton<FbPoster>(provider =>
-            {
-                var accessToken = builder.Configuration["FacebookAccessToken"] ?? string.Empty;
-                var httpClientFactory = provider.GetRequiredService<IHttpClientFactory>();
-                return new FbPoster(accessToken, httpClientFactory.CreateClient(HttpClientNames.Default));
             });
 
             builder.Services.AddScoped<YoutubeService>();

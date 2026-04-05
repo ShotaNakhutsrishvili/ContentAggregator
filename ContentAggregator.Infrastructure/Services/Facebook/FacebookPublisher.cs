@@ -1,28 +1,49 @@
 using System.Text.Json;
+using ContentAggregator.Application.Interfaces;
+using ContentAggregator.Application.Models;
+using Microsoft.Extensions.Options;
 
-namespace ContentAggregator.Core.Services
+namespace ContentAggregator.Infrastructure.Services.Facebook
 {
-    public class FbPoster
+    public sealed class FacebookPublisher : IFacebookPublisher
     {
-        private readonly HttpClient _httpClient;
-        private readonly string _accessToken;
-
-        public FbPoster(string accessToken, HttpClient httpClient)
+        private static readonly JsonSerializerOptions SerializerOptions = new()
         {
-            _accessToken = accessToken;
+            PropertyNameCaseInsensitive = true
+        };
+
+        private readonly HttpClient _httpClient;
+        private readonly FacebookOptions _options;
+
+        public FacebookPublisher(HttpClient httpClient, IOptions<FacebookOptions> options)
+        {
             _httpClient = httpClient;
+            _options = options.Value;
         }
 
-        public async Task<PublishResult> SharePost(string pageId, string? postUrl, string? message = null, CancellationToken cancellationToken = default)
+        public bool IsConfigured => !string.IsNullOrWhiteSpace(_options.AccessToken);
+
+        public string? DefaultPageId => _options.PageId;
+
+        public async Task<FacebookPublishResult> SharePostAsync(
+            string pageId,
+            string? postUrl,
+            string? message,
+            CancellationToken cancellationToken = default)
         {
             if (postUrl == null && message == null)
             {
                 throw new InvalidOperationException("Either postUrl or message must be provided.");
             }
 
+            if (!IsConfigured)
+            {
+                return new FacebookPublishResult(false, "Facebook access token is not configured.", null);
+            }
+
             var postParameters = new Dictionary<string, string?>
             {
-                ["access_token"] = _accessToken
+                ["access_token"] = _options.AccessToken
             };
 
             if (!string.IsNullOrEmpty(postUrl))
@@ -35,8 +56,8 @@ namespace ContentAggregator.Core.Services
                 postParameters["message"] = message;
             }
 
-            var response = await _httpClient.PostAsync(
-                $"https://graph.facebook.com/v22.0/{pageId}/feed",
+            using var response = await _httpClient.PostAsync(
+                $"v22.0/{pageId}/feed",
                 new FormUrlEncodedContent(postParameters!),
                 cancellationToken);
 
@@ -44,7 +65,7 @@ namespace ContentAggregator.Core.Services
 
             if (!response.IsSuccessStatusCode)
             {
-                return new PublishResult(
+                return new FacebookPublishResult(
                     false,
                     $"Facebook API error: {(int)response.StatusCode} {response.ReasonPhrase}. Body: {responseBody}",
                     null);
@@ -52,12 +73,9 @@ namespace ContentAggregator.Core.Services
 
             try
             {
-                var payload = JsonSerializer.Deserialize<FacebookPublishResponse>(responseBody, new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true
-                });
+                var payload = JsonSerializer.Deserialize<FacebookPublishResponse>(responseBody, SerializerOptions);
 
-                return new PublishResult(
+                return new FacebookPublishResult(
                     !string.IsNullOrWhiteSpace(payload?.Id),
                     string.IsNullOrWhiteSpace(payload?.Id)
                         ? "Facebook API returned success without post ID."
@@ -66,11 +84,9 @@ namespace ContentAggregator.Core.Services
             }
             catch (JsonException)
             {
-                return new PublishResult(false, $"Facebook API response parse error. Body: {responseBody}", null);
+                return new FacebookPublishResult(false, $"Facebook API response parse error. Body: {responseBody}", null);
             }
         }
-
-        public readonly record struct PublishResult(bool Success, string Message, string? PostId);
 
         private sealed class FacebookPublishResponse
         {

@@ -1,5 +1,5 @@
-﻿using ContentAggregator.Core.Models;
-using ContentAggregator.Core.Services;
+﻿using ContentAggregator.Application.Interfaces;
+using ContentAggregator.Core.Models;
 using Microsoft.AspNetCore.Mvc;
 
 namespace ContentAggregator.API.Controllers
@@ -8,11 +8,11 @@ namespace ContentAggregator.API.Controllers
     [ApiController]
     public class FbPostsController : ControllerBase
     {
-        private readonly FbPoster _fbPoster;
+        private readonly IFacebookPublisher _facebookPublisher;
 
-        public FbPostsController(FbPoster fbPoster)
+        public FbPostsController(IFacebookPublisher facebookPublisher)
         {
-            _fbPoster = fbPoster;
+            _facebookPublisher = facebookPublisher;
         }
 
         // POST: api/FbPosts
@@ -21,7 +21,10 @@ namespace ContentAggregator.API.Controllers
         {
             try
             {
-                var result = await _fbPoster.SharePost(post.PageId, post.Url?.ToString(), post.CustomText);
+                var result = await _facebookPublisher.SharePostAsync(
+                    post.PageId,
+                    post.Url?.ToString(),
+                    post.CustomText);
                 if (!result.Success)
                 {
                     return BadRequest(new { result.Message });
