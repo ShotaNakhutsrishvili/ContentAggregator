@@ -75,6 +75,7 @@ namespace ContentAggregator.API
             builder.Services.AddScoped<IFeatureService, FeatureService>();
             builder.Services.AddScoped<ISummarizationWorkflow, SummarizationWorkflow>();
             builder.Services.AddScoped<IYoutubeChannelService, YoutubeChannelService>();
+            builder.Services.AddScoped<IYoutubeDiscoveryWorkflow, YoutubeDiscoveryWorkflow>();
             builder.Services.AddScoped<IYoutubeContentQueryService, YoutubeContentQueryService>();
             builder.Services
                 .AddOptions<LmStudioOptions>()
