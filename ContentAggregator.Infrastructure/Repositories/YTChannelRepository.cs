@@ -1,5 +1,5 @@
-﻿using ContentAggregator.Core.Entities;
-using ContentAggregator.Core.Interfaces;
+﻿using ContentAggregator.Application.Interfaces;
+using ContentAggregator.Core.Entities;
 using ContentAggregator.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 

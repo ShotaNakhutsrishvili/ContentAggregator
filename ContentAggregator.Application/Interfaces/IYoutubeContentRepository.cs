@@ -1,6 +1,6 @@
-﻿using ContentAggregator.Core.Entities;
+using ContentAggregator.Core.Entities;
 
-namespace ContentAggregator.Core.Interfaces
+namespace ContentAggregator.Application.Interfaces
 {
     public interface IYoutubeContentRepository
     {

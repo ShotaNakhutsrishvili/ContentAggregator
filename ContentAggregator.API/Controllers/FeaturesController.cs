@@ -1,6 +1,6 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using ContentAggregator.Application.Interfaces;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using ContentAggregator.Core.Interfaces;
 using ContentAggregator.Core.Entities;
 using ContentAggregator.Core.Models.DTOs;
 

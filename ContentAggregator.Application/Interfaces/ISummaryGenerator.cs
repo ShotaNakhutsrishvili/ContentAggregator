@@ -1,7 +1,7 @@
+using ContentAggregator.Application.Models;
 using ContentAggregator.Core.Entities;
-using ContentAggregator.Core.Models;
 
-namespace ContentAggregator.Core.Interfaces
+namespace ContentAggregator.Application.Interfaces
 {
     public interface ISummaryGenerator
     {

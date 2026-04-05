@@ -1,8 +1,8 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using ContentAggregator.Application.Interfaces;
 using ContentAggregator.Core.Entities;
-using ContentAggregator.Core.Interfaces;
 using Hangfire;
 
 namespace ContentAggregator.API.Services.BackgroundServices

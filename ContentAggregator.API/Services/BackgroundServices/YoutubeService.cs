@@ -1,7 +1,7 @@
 ﻿using Newtonsoft.Json;
 using System.Text.RegularExpressions;
+using ContentAggregator.Application.Interfaces;
 using ContentAggregator.Core.Entities;
-using ContentAggregator.Core.Interfaces;
 using ContentAggregator.Core.Models.YTModels;
 using Hangfire;
 using static ContentAggregator.API.Program;

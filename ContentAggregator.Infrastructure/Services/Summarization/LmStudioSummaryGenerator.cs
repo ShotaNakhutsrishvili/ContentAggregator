@@ -1,12 +1,12 @@
+using ContentAggregator.Application.Interfaces;
+using ContentAggregator.Application.Models;
+using ContentAggregator.Core.Entities;
+using Microsoft.Extensions.Options;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using ContentAggregator.Core.Entities;
-using ContentAggregator.Core.Interfaces;
-using ContentAggregator.Core.Models;
-using Microsoft.Extensions.Options;
 
-namespace ContentAggregator.API.Services.Summarization
+namespace ContentAggregator.Infrastructure.Services.Summarization
 {
     public sealed class LmStudioSummaryGenerator : ISummaryGenerator
     {

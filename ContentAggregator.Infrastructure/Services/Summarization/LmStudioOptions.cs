@@ -1,4 +1,4 @@
-namespace ContentAggregator.API.Services.Summarization
+namespace ContentAggregator.Infrastructure.Services.Summarization
 {
     public sealed class LmStudioOptions
     {

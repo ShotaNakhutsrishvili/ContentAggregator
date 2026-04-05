@@ -1,4 +1,4 @@
-namespace ContentAggregator.Core.Models
+namespace ContentAggregator.Application.Models
 {
     public sealed record SummaryGenerationResult(
         string Participants,

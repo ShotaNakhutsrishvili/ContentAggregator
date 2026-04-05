@@ -1,8 +1,8 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using ContentAggregator.Application.Interfaces;
 using ContentAggregator.Core.Entities;
 using ContentAggregator.Core.Models.YTModels;
 using Newtonsoft.Json;
-using ContentAggregator.Core.Interfaces;
 using ContentAggregator.Core.Models.DTOs;
 using static ContentAggregator.API.Program;
 using System.Web;

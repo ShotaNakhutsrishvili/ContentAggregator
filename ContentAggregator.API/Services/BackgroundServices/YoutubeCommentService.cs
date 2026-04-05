@@ -1,8 +1,8 @@
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using ContentAggregator.Application.Interfaces;
 using ContentAggregator.Core.Entities;
-using ContentAggregator.Core.Interfaces;
 using ContentAggregator.Core.Models;
 using Hangfire;
 

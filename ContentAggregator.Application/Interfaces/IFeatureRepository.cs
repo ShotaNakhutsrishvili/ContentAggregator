@@ -1,11 +1,6 @@
-﻿using ContentAggregator.Core.Entities;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using ContentAggregator.Core.Entities;
 
-namespace ContentAggregator.Core.Interfaces
+namespace ContentAggregator.Application.Interfaces
 {
     public interface IFeatureRepository
     {

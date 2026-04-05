@@ -1,4 +1,4 @@
-﻿using ContentAggregator.Core.Interfaces;
+﻿using ContentAggregator.Application.Interfaces;
 using ContentAggregator.Core.Models;
 using ContentAggregator.Core.Services;
 using Hangfire;

@@ -1,4 +1,5 @@
-using ContentAggregator.Core.Interfaces;
+using ContentAggregator.Application.Interfaces;
+using ContentAggregator.Application.Services.Summarization;
 using ContentAggregator.Infrastructure.Repositories;
 using Microsoft.EntityFrameworkCore;
 using ContentAggregator.Infrastructure.Data;
@@ -7,12 +8,12 @@ using Microsoft.AspNetCore.Mvc;
 using ContentAggregator.API.Services.Middlewares;
 using ContentAggregator.Core.Services;
 using ContentAggregator.API.Services.BackgroundServices;
-using ContentAggregator.API.Services.Summarization;
 using Hangfire;
 using Hangfire.PostgreSql;
 using System.Security.Cryptography.X509Certificates;
 using dotenv.net;
 using Microsoft.Extensions.Options;
+using ContentAggregator.Infrastructure.Services.Summarization;
 
 namespace ContentAggregator.API
 {
@@ -67,6 +68,7 @@ namespace ContentAggregator.API
             builder.Services.AddScoped<IFeatureRepository, FeatureRepository>();
             builder.Services.AddScoped<IYTChannelRepository, YTChannelRepository>();
             builder.Services.AddScoped<IYoutubeContentRepository, YoutubeContentRepository>();
+            builder.Services.AddScoped<ISummarizationWorkflow, SummarizationWorkflow>();
             builder.Services
                 .AddOptions<LmStudioOptions>()
                 .Bind(configuration.GetSection(LmStudioOptions.SectionName))

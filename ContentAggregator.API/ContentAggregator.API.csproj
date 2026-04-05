@@ -20,6 +20,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\ContentAggregator.Application\ContentAggregator.Application.csproj" />
     <ProjectReference Include="..\ContentAggregator.Core\ContentAggregator.Core.csproj" />
     <ProjectReference Include="..\ContentAggregator.Infrastructure\ContentAggregator.Infrastructure.csproj" />
   </ItemGroup>
