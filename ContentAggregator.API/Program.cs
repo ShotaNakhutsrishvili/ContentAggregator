@@ -7,10 +7,12 @@ using Microsoft.AspNetCore.Mvc;
 using ContentAggregator.API.Services.Middlewares;
 using ContentAggregator.Core.Services;
 using ContentAggregator.API.Services.BackgroundServices;
+using ContentAggregator.API.Services.Summarization;
 using Hangfire;
 using Hangfire.PostgreSql;
 using System.Security.Cryptography.X509Certificates;
 using dotenv.net;
+using Microsoft.Extensions.Options;
 
 namespace ContentAggregator.API
 {
@@ -65,6 +67,16 @@ namespace ContentAggregator.API
             builder.Services.AddScoped<IFeatureRepository, FeatureRepository>();
             builder.Services.AddScoped<IYTChannelRepository, YTChannelRepository>();
             builder.Services.AddScoped<IYoutubeContentRepository, YoutubeContentRepository>();
+            builder.Services
+                .AddOptions<LmStudioOptions>()
+                .Bind(configuration.GetSection(LmStudioOptions.SectionName))
+                .PostConfigure(options =>
+                {
+                    if (string.IsNullOrWhiteSpace(options.BaseUrl))
+                    {
+                        options.BaseUrl = configuration["LMStudioApiURL"] ?? configuration["LMSTUDIO_API_URL"] ?? string.Empty;
+                    }
+                });
 
             builder.Services.AddHttpClient(HttpClientNames.Default);
             builder.Services.AddHttpClient(HttpClientNames.LongTimeout, client =>
@@ -74,6 +86,17 @@ namespace ContentAggregator.API
             builder.Services.AddHttpClient(nameof(YoutubeCommentService), client =>
             {
                 client.Timeout = TimeSpan.FromMinutes(2);
+            });
+            builder.Services.AddHttpClient<ISummaryGenerator, LmStudioSummaryGenerator>((provider, client) =>
+            {
+                var options = provider.GetRequiredService<IOptions<LmStudioOptions>>().Value;
+                client.Timeout = TimeSpan.FromMinutes(40);
+
+                if (!string.IsNullOrWhiteSpace(options.BaseUrl)
+                    && Uri.TryCreate(EnsureTrailingSlash(options.BaseUrl), UriKind.Absolute, out var baseAddress))
+                {
+                    client.BaseAddress = baseAddress;
+                }
             });
 
             builder.Services.AddSingleton<FbPoster>(provider =>
@@ -85,7 +108,7 @@ namespace ContentAggregator.API
 
             builder.Services.AddScoped<YoutubeService>();
             builder.Services.AddScoped<SubtitleService>();
-            builder.Services.AddScoped<SummarizerService>();
+            builder.Services.AddScoped<SummarizerJob>();
             builder.Services.AddScoped<FacebookService>();
             builder.Services.AddScoped<YoutubeCommentService>();
 
@@ -151,7 +174,7 @@ namespace ContentAggregator.API
                 job => job.ProcessOnceAsync(),
                 "*/30 * * * *");
 
-            recurringJobs.AddOrUpdate<SummarizerService>(
+            recurringJobs.AddOrUpdate<SummarizerJob>(
                 "pipeline:georgian-summary",
                 job => job.ProcessOnceAsync(),
                 "*/15 * * * *");
@@ -174,7 +197,7 @@ namespace ContentAggregator.API
 
             var discoveryJobId = backgroundJobs.Enqueue<YoutubeService>(job => job.ProcessOnceAsync());
             var subtitleJobId = backgroundJobs.ContinueJobWith<SubtitleService>(discoveryJobId, job => job.ProcessOnceAsync());
-            var summaryJobId = backgroundJobs.ContinueJobWith<SummarizerService>(subtitleJobId, job => job.ProcessOnceAsync());
+            var summaryJobId = backgroundJobs.ContinueJobWith<SummarizerJob>(subtitleJobId, job => job.ProcessOnceAsync());
 
             backgroundJobs.ContinueJobWith<FacebookService>(summaryJobId, job => job.ProcessOnceAsync());
             backgroundJobs.ContinueJobWith<YoutubeCommentService>(summaryJobId, job => job.ProcessOnceAsync());
@@ -219,6 +242,11 @@ namespace ContentAggregator.API
         {
             public const string Default = "default";
             public const string LongTimeout = "longTimeout";
+        }
+
+        private static string EnsureTrailingSlash(string value)
+        {
+            return value.TrimEnd('/') + "/";
         }
 
         /// <summary>
