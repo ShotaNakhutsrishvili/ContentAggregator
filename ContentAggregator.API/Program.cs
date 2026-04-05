@@ -3,6 +3,7 @@ using ContentAggregator.Application.Services.Features;
 using ContentAggregator.Application.Services.Subtitles;
 using ContentAggregator.Application.Services.Summarization;
 using ContentAggregator.Application.Services.Youtube;
+using ContentAggregator.Application.Services.YoutubeComments;
 using ContentAggregator.Application.Services.YoutubeContents;
 using ContentAggregator.Infrastructure.Repositories;
 using Microsoft.EntityFrameworkCore;
@@ -20,6 +21,7 @@ using Microsoft.Extensions.Options;
 using ContentAggregator.Infrastructure.Services.Subtitles;
 using ContentAggregator.Infrastructure.Services.Summarization;
 using ContentAggregator.Infrastructure.Services.Youtube;
+using ContentAggregator.Infrastructure.Services.YoutubeComments;
 
 namespace ContentAggregator.API
 {
@@ -79,6 +81,7 @@ namespace ContentAggregator.API
             builder.Services.AddScoped<ISubtitleDownloader, YtDlpSubtitleDownloader>();
             builder.Services.AddScoped<ISummarizationWorkflow, SummarizationWorkflow>();
             builder.Services.AddScoped<IYoutubeChannelService, YoutubeChannelService>();
+            builder.Services.AddScoped<IYoutubeCommentWorkflow, YoutubeCommentWorkflow>();
             builder.Services.AddScoped<IYoutubeDiscoveryWorkflow, YoutubeDiscoveryWorkflow>();
             builder.Services.AddScoped<IYoutubeContentQueryService, YoutubeContentQueryService>();
             builder.Services
@@ -104,15 +107,21 @@ namespace ContentAggregator.API
                         options.ApiKey = configuration["YoutubeAccessToken"] ?? string.Empty;
                     }
                 });
+            builder.Services
+                .AddOptions<YoutubeCommentOptions>()
+                .Bind(configuration.GetSection(YoutubeCommentOptions.SectionName))
+                .PostConfigure(options =>
+                {
+                    if (string.IsNullOrWhiteSpace(options.OAuthAccessToken))
+                    {
+                        options.OAuthAccessToken = configuration["YoutubeOAuthAccessToken"] ?? string.Empty;
+                    }
+                });
 
             builder.Services.AddHttpClient(HttpClientNames.Default);
             builder.Services.AddHttpClient(HttpClientNames.LongTimeout, client =>
             {
                 client.Timeout = TimeSpan.FromMinutes(40);
-            });
-            builder.Services.AddHttpClient(nameof(YoutubeCommentService), client =>
-            {
-                client.Timeout = TimeSpan.FromMinutes(2);
             });
             builder.Services.AddHttpClient<ISummaryGenerator, LmStudioSummaryGenerator>((provider, client) =>
             {
@@ -126,6 +135,11 @@ namespace ContentAggregator.API
                 }
             });
             builder.Services.AddHttpClient<IYoutubeMetadataClient, YoutubeMetadataClient>(client =>
+            {
+                client.BaseAddress = new Uri("https://www.googleapis.com/youtube/v3/");
+                client.Timeout = TimeSpan.FromMinutes(2);
+            });
+            builder.Services.AddHttpClient<IYoutubeCommentPublisher, YoutubeCommentPublisher>(client =>
             {
                 client.BaseAddress = new Uri("https://www.googleapis.com/youtube/v3/");
                 client.Timeout = TimeSpan.FromMinutes(2);
