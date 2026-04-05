@@ -1,6 +1,5 @@
 ﻿using ContentAggregator.Application.Interfaces;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using ContentAggregator.Core.Entities;
 using ContentAggregator.Core.Models.DTOs;
 
@@ -10,18 +9,18 @@ namespace ContentAggregator.API.Controllers
     [ApiController]
     public class FeaturesController : ControllerBase
     {
-        private readonly IFeatureRepository _featureRepository;
+        private readonly IFeatureService _featureService;
 
-        public FeaturesController(IFeatureRepository featureRepository)
+        public FeaturesController(IFeatureService featureService)
         {
-            _featureRepository = featureRepository;
+            _featureService = featureService;
         }
 
         // GET: api/Features
         [HttpGet]
         public async Task<ActionResult<IEnumerable<Feature>>> GetFeatures(CancellationToken cancellationToken)
         {
-            var result = await _featureRepository.GetAllFeaturesAsync(cancellationToken);
+            var result = await _featureService.GetAllAsync(cancellationToken);
 
             return Ok(result);
         }
@@ -30,7 +29,7 @@ namespace ContentAggregator.API.Controllers
         [HttpGet("{id}")]
         public async Task<ActionResult<Feature>> GetFeature(int id, CancellationToken cancellationToken)
         {
-            var feature = await _featureRepository.GetFeatureByIdAsync(id, cancellationToken);
+            var feature = await _featureService.GetByIdAsync(id, cancellationToken);
 
             if (feature == null)
             {
@@ -45,21 +44,11 @@ namespace ContentAggregator.API.Controllers
         [HttpPut("{id}")]
         public async Task<IActionResult> PutFeature(int id, [FromHeader(Name = "Prefer")] string? preferHeader, [FromBody] FeatureDto feature, CancellationToken cancellationToken)
         {
-            var existingFeature = await _featureRepository.GetFeatureByIdAsync(id, cancellationToken);
+            var existingFeature = await _featureService.UpdateAsync(id, feature, cancellationToken);
             if (existingFeature == null)
             {
                 return NotFound();
             }
-
-            // TODO: Use automapper to update only the specific properties
-            existingFeature.FirstNameEng = feature.FirstNameEng;
-            existingFeature.LastNameEng = feature.LastNameEng;
-            existingFeature.FirstNameGeo = feature.FirstNameGeo;
-            existingFeature.LastNameGeo = feature.LastNameGeo;
-
-            existingFeature.UpdatedAt = DateTimeOffset.UtcNow;
-
-            await _featureRepository.SaveChangesAsync(cancellationToken);
 
             bool wantsMinimalResponse = preferHeader?.Contains("return=minimal") ?? false;
 
@@ -73,14 +62,7 @@ namespace ContentAggregator.API.Controllers
         //[ValidateModelFilter]
         public async Task<ActionResult<Feature>> PostFeature([FromHeader(Name = "Prefer")] string? preferHeader, [FromBody] FeatureDto featureDto, CancellationToken cancellationToken)
         {
-            Feature featureEntity = new Feature // TODO: Implement automapper
-            {
-                FirstNameEng = featureDto.FirstNameEng,
-                LastNameEng = featureDto.LastNameEng,
-                FirstNameGeo = featureDto.FirstNameGeo,
-                LastNameGeo = featureDto.LastNameGeo
-            };
-            await _featureRepository.AddFeatureAsync(featureEntity, cancellationToken);
+            var featureEntity = await _featureService.CreateAsync(featureDto, cancellationToken);
 
             bool wantsMinimalResponse = preferHeader?.Contains("return=minimal") ?? false;
 
@@ -93,7 +75,7 @@ namespace ContentAggregator.API.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteFeature(int id, CancellationToken cancellationToken)
         {
-            var result = await _featureRepository.DeleteFeatureAsync(id, cancellationToken);
+            var result = await _featureService.DeleteAsync(id, cancellationToken);
             if (!result)
             {
                 return NotFound();

@@ -1,4 +1,5 @@
 using ContentAggregator.Application.Interfaces;
+using ContentAggregator.Application.Services.Features;
 using ContentAggregator.Application.Services.Summarization;
 using ContentAggregator.Infrastructure.Repositories;
 using Microsoft.EntityFrameworkCore;
@@ -68,6 +69,7 @@ namespace ContentAggregator.API
             builder.Services.AddScoped<IFeatureRepository, FeatureRepository>();
             builder.Services.AddScoped<IYTChannelRepository, YTChannelRepository>();
             builder.Services.AddScoped<IYoutubeContentRepository, YoutubeContentRepository>();
+            builder.Services.AddScoped<IFeatureService, FeatureService>();
             builder.Services.AddScoped<ISummarizationWorkflow, SummarizationWorkflow>();
             builder.Services
                 .AddOptions<LmStudioOptions>()
