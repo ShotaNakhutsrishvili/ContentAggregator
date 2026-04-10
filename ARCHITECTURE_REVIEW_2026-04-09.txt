@@ -1,0 +1,139 @@
+Architecture Review
+Date: 2026-04-09
+
+Summary
+
+The solution is materially better after the recent Application/Infrastructure refactors, but it still does not cleanly separate domain, application, transport, and persistence concerns.
+
+Main Issues
+
+1. Core is not a pure domain project.
+   - Core still contains API/request DTOs and raw external transport models.
+   - Examples:
+     - Core/Models/DTOs/FeatureDto.cs
+     - Core/Models/DTOs/YtChannelDto.cs
+     - Core/Models/Post.cs
+     - Core/Models/YTModels/*
+   - These belong in API/Application contracts or Infrastructure, not Domain/Core.
+
+2. API still exposes entities directly.
+   - Controllers return Feature, YTChannel, and other entity types directly.
+   - The app works around entity graph issues by enabling JSON cycle ignoring.
+   - That leaks persistence shape into the HTTP contract and makes API responses harder to evolve safely.
+
+3. Persistence boundaries are weak and inconsistent.
+   - Repositories both mutate state and save immediately.
+   - Repositories also expose SaveChangesAsync.
+   - Workflows call update/save operations inside loops.
+   - Result: inconsistent transaction boundaries and unnecessary DB round-trips.
+
+4. Query semantics are misleading.
+   - Some repository method names imply generic reads but contain embedded business filters.
+   - Example: GetAllChannelsAsync excludes disabled channels.
+   - Admin/controller reads and discovery jobs should not share ambiguous query names.
+
+5. Program.cs is overloaded.
+   - It currently owns:
+     - service registration
+     - typed options setup
+     - HTTP client wiring
+     - Hangfire registration
+     - recurring job registration
+     - startup pipeline enqueueing
+     - DB initialization
+     - Kestrel setup
+   - This works, but it is already too large for a clean composition root.
+
+6. DB migration and seeding run automatically on application startup.
+   - Convenient for local development.
+   - Risky for real deployments, especially if API and worker hosts are split later.
+   - Better handled by explicit migration/seeding steps.
+
+7. There is at least one real correctness bug.
+   - AI summary disclaimer strings are swapped for English and Russian.
+   - See Core/Models/Constants.cs.
+
+8. Dead/sample code is still present.
+   - WeatherForecast sample controller and model.
+   - Unused/placeholder files such as ChannelInfo, commented middleware, old validation helpers.
+   - Stale config keys also remain in appsettings files.
+
+9. Soft-delete is only half implemented.
+   - Entities contain DeletedAt fields.
+   - Deletes are still hard deletes.
+   - No global query filters exist.
+   - This is an incomplete pattern and should be either finished or removed.
+
+10. There is no visible automated test project.
+   - The solution currently appears to contain only runtime projects.
+   - Workflows and adapters are now structured well enough to unit test and integration test.
+
+Recommended Next Steps
+
+Priority 1
+1. Fix the real bug in Constants.cs.
+2. Remove sample/dead code and stale config.
+3. Decide whether soft-delete is real or should be removed.
+
+Priority 2
+4. Stop returning entities from controllers.
+5. Introduce explicit request/response contracts for API endpoints.
+6. Remove JSON cycle ignoring once controllers no longer expose EF/entity graphs directly.
+
+Priority 3
+7. Move non-domain DTOs and raw transport models out of Core.
+8. Keep Core for entities, enums, value objects, and actual domain rules only.
+9. Move external API response DTOs fully into Infrastructure.
+
+Priority 4
+10. Standardize persistence boundaries.
+11. Choose one style:
+    - repositories mutate without saving and workflows/units of work commit, or
+    - repositories own complete operation boundaries and SaveChangesAsync is not exposed separately.
+12. Current state mixes both approaches and should be unified.
+
+Priority 5
+13. Split query methods by use case.
+14. Example:
+    - GetActiveChannelsForDiscoveryAsync
+    - GetAllChannelsForAdminAsync
+15. Avoid generic names that hide filtering behavior.
+
+Priority 6
+16. Break Program.cs into composition extension methods.
+17. Example areas:
+    - AddApplicationServices
+    - AddInfrastructureServices
+    - AddHangfireJobs
+    - UseApiPipeline
+
+Priority 7
+18. Add a worker host project.
+19. Best next split:
+    - ContentAggregator.API for HTTP endpoints
+    - ContentAggregator.Worker for Hangfire/pipeline jobs
+20. Do not add multiple extra projects unless they clarify an actual boundary.
+
+Priority 8
+21. Add tests.
+22. Focus first on:
+    - application workflows
+    - parsing and adapter behavior
+    - repository query semantics
+    - controller contract tests if needed
+
+What Not To Add Prematurely
+
+- MediatR just for architecture aesthetics.
+- Generic repositories.
+- Full CQRS/event-driven plumbing without a real need.
+
+Highest-Value Next Refactor
+
+The best next architectural refactor is:
+
+- Stop exposing entities over HTTP.
+- Introduce explicit API contracts.
+- Move non-domain DTOs and transport models out of Core.
+
+That change will make the layering more honest and will also simplify the eventual API/Worker split.
