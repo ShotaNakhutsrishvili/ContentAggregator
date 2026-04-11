@@ -36,7 +36,7 @@ namespace ContentAggregator.Application.Services.Facebook
 
             try
             {
-                var youtubeContents = await _youtubeContentRepository.GetYTContentsForFBPost();
+                var youtubeContents = await _youtubeContentRepository.GetYTContentsForFBPost(cancellationToken);
                 _logger.LogInformation(
                     "{Now}: DB query returned {Count} items ready to be posted on FB.",
                     DateTimeOffset.UtcNow,
@@ -78,7 +78,8 @@ namespace ContentAggregator.Application.Services.Facebook
                         content.Id);
                 }
 
-                await _youtubeContentRepository.UpdateYTContentsRangeAsync(youtubeContents);
+                await _youtubeContentRepository.UpdateYTContentsRangeAsync(youtubeContents, cancellationToken);
+                await _youtubeContentRepository.SaveChangesAsync(cancellationToken);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {

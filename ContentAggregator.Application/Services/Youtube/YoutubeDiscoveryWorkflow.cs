@@ -46,7 +46,7 @@ namespace ContentAggregator.Application.Services.Youtube
 
         private async Task ProcessVideosNeedingRefetchAsync(CancellationToken cancellationToken)
         {
-            var videosNeedingRefetch = await _youtubeContentRepository.GetYTContentsNeedingRefetch();
+            var videosNeedingRefetch = await _youtubeContentRepository.GetYTContentsNeedingRefetch(cancellationToken);
 
             if (!videosNeedingRefetch.Any())
             {
@@ -75,11 +75,16 @@ namespace ContentAggregator.Application.Services.Youtube
                 {
                     ytContent.NeedsRefetch = false;
                     ytContent.VideoLength = video.VideoLength;
-                    await _youtubeContentRepository.UpdateYTContentsAsync(ytContent);
+                    await _youtubeContentRepository.UpdateYTContentsAsync(ytContent, cancellationToken);
+                    await _youtubeContentRepository.SaveChangesAsync(cancellationToken);
                 }
                 else if (video.VideoLength != TimeSpan.Zero)
                 {
-                    await _youtubeContentRepository.DeleteYTContentAsync(ytContent.Id, cancellationToken);
+                    var deleted = await _youtubeContentRepository.DeleteYTContentAsync(ytContent.Id, cancellationToken);
+                    if (deleted)
+                    {
+                        await _youtubeContentRepository.SaveChangesAsync(cancellationToken);
+                    }
                 }
             }
         }
@@ -87,7 +92,7 @@ namespace ContentAggregator.Application.Services.Youtube
         private async Task ProcessChannelsAsync(CancellationToken cancellationToken)
         {
             _logger.LogInformation("Fetching all YouTube channels from the database.");
-            var channels = await _channelRepository.GetAllChannelsAsync(cancellationToken);
+            var channels = await _channelRepository.GetActiveChannelsForDiscoveryAsync(cancellationToken);
 
             foreach (var channel in channels)
             {
@@ -121,6 +126,7 @@ namespace ContentAggregator.Application.Services.Youtube
             }
 
             await _channelRepository.UpdateChannelAsync(channel, cancellationToken);
+            await _channelRepository.SaveChangesAsync(cancellationToken);
         }
 
         private async Task<List<YoutubeContent>> FetchYoutubeContentsAsync(YTChannel channel, CancellationToken cancellationToken)

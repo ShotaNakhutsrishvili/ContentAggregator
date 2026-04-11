@@ -20,7 +20,7 @@ namespace ContentAggregator.Application.Services.Youtube
 
         public async Task<IReadOnlyList<YoutubeChannelListItemResponse>> GetAllAsync(CancellationToken cancellationToken)
         {
-            var channels = await _channelRepository.GetAllChannelsAsync(cancellationToken);
+            var channels = await _channelRepository.GetAllChannelsForAdminAsync(cancellationToken);
 
             return channels
                 .Select(MapToListItemResponse)
@@ -107,6 +107,7 @@ namespace ContentAggregator.Application.Services.Youtube
                 };
 
                 await _channelRepository.AddChannelAsync(channel, cancellationToken);
+                await _channelRepository.SaveChangesAsync(cancellationToken);
                 return new CreateYoutubeChannelResult(MapToDetailResponse(channel), null);
             }
             catch (Exception ex)
@@ -117,7 +118,14 @@ namespace ContentAggregator.Application.Services.Youtube
 
         public async Task<bool> DeleteAsync(string id, CancellationToken cancellationToken)
         {
-            return await _channelRepository.DeleteChannelAsync(id, cancellationToken);
+            var deleted = await _channelRepository.DeleteChannelAsync(id, cancellationToken);
+            if (!deleted)
+            {
+                return false;
+            }
+
+            await _channelRepository.SaveChangesAsync(cancellationToken);
+            return true;
         }
 
         public async Task<CreateYoutubeVideoResult> CreateVideoAsync(

@@ -6,7 +6,8 @@ namespace ContentAggregator.Application.Interfaces
     {
         Task<YTChannel?> GetChannelByIdAsync(string id, CancellationToken cancellationToken);
         Task<YTChannel?> GetChannelByUrlAsync(Uri url, CancellationToken cancellationToken);
-        Task<IEnumerable<YTChannel>> GetAllChannelsAsync(CancellationToken cancellationToken);
+        Task<IReadOnlyList<YTChannel>> GetAllChannelsForAdminAsync(CancellationToken cancellationToken);
+        Task<IReadOnlyList<YTChannel>> GetActiveChannelsForDiscoveryAsync(CancellationToken cancellationToken);
         Task AddChannelAsync(YTChannel channel, CancellationToken cancellationToken);
         Task<bool> UpdateChannelAsync(YTChannel channel, CancellationToken cancellationToken);
         Task<bool> DeleteChannelAsync(string id, CancellationToken cancellationToken);

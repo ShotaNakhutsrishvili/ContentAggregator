@@ -30,8 +30,7 @@ namespace ContentAggregator.Application.Services.Summarization
             {
                 _logger.LogInformation("{Now}: Starting summarization pass.", DateTimeOffset.UtcNow);
 
-                var youtubeContents = await _youtubeContentRepository.GetYTContentsWithoutSummaries();
-                var features = await _featureRepository.GetAllFeaturesAsync(cancellationToken);
+                var youtubeContents = await _youtubeContentRepository.GetYTContentsWithoutSummaries(cancellationToken);
 
                 foreach (var content in youtubeContents)
                 {
@@ -60,9 +59,10 @@ namespace ContentAggregator.Application.Services.Summarization
                         content.YoutubeCommentText = generated.YoutubeCommentText;
                         content.LastProcessingError = null;
 
-                        ParseParticipants(generated, content, features);
+                        await AddParticipantLinksAsync(generated, content, cancellationToken);
 
-                        await _youtubeContentRepository.UpdateYTContentsAsync(content);
+                        await _youtubeContentRepository.UpdateYTContentsAsync(content, cancellationToken);
+                        await _youtubeContentRepository.SaveChangesAsync(cancellationToken);
                         _logger.LogInformation(
                             "{Now}: Saved summary for youtube content ID {ContentId}.",
                             DateTimeOffset.UtcNow,
@@ -75,7 +75,8 @@ namespace ContentAggregator.Application.Services.Summarization
                     catch (Exception ex)
                     {
                         content.LastProcessingError = ex.Message;
-                        await _youtubeContentRepository.UpdateYTContentsAsync(content);
+                        await _youtubeContentRepository.UpdateYTContentsAsync(content, cancellationToken);
+                        await _youtubeContentRepository.SaveChangesAsync(cancellationToken);
                         _logger.LogWarning(ex, "Failed to summarize youtube content ID {ContentId}.", content.Id);
                     }
                 }
@@ -91,10 +92,10 @@ namespace ContentAggregator.Application.Services.Summarization
             }
         }
 
-        private static void ParseParticipants(
+        private async Task AddParticipantLinksAsync(
             SummaryGenerationResult generated,
             YoutubeContent youtubeContent,
-            IEnumerable<Feature> features)
+            CancellationToken cancellationToken)
         {
             if (string.IsNullOrWhiteSpace(generated.Participants))
             {
@@ -102,26 +103,30 @@ namespace ContentAggregator.Application.Services.Summarization
             }
 
             youtubeContent.AdditionalComments = generated.Participants;
-            var listOfParticipants = generated.Participants.Split(
-                new[] { ',', ' ' },
-                StringSplitOptions.RemoveEmptyEntries);
-
-            foreach (var participant in listOfParticipants)
+            var participantLastNames = ParseParticipantLastNames(generated.Participants);
+            if (participantLastNames.Count == 0)
             {
-                var participantTrimmed = participant.Trim();
-                foreach (var feature in features)
+                return;
+            }
+
+            var participantMatches = await _featureRepository.GetParticipantMatchesByLastNamesAsync(
+                participantLastNames,
+                cancellationToken);
+            var featureIdsByLastName = BuildFeatureIdsByLastName(participantMatches);
+            var linkedFeatureIds = youtubeContent.YoutubeContentFeatures
+                .Select(x => x.FeatureId)
+                .ToHashSet();
+
+            foreach (var participantLastName in participantLastNames)
+            {
+                if (!featureIdsByLastName.TryGetValue(participantLastName, out var featureIds))
                 {
-                    var isMatch =
-                        string.Equals(participantTrimmed, feature.LastNameEng, StringComparison.OrdinalIgnoreCase) ||
-                        string.Equals(participantTrimmed, feature.LastNameGeo, StringComparison.OrdinalIgnoreCase);
+                    continue;
+                }
 
-                    if (!isMatch)
-                    {
-                        continue;
-                    }
-
-                    var alreadyLinked = youtubeContent.YoutubeContentFeatures.Any(x => x.FeatureId == feature.Id);
-                    if (alreadyLinked)
+                foreach (var featureId in featureIds)
+                {
+                    if (!linkedFeatureIds.Add(featureId))
                     {
                         continue;
                     }
@@ -129,9 +134,48 @@ namespace ContentAggregator.Application.Services.Summarization
                     youtubeContent.YoutubeContentFeatures.Add(new YoutubeContentFeature
                     {
                         YoutubeContentId = youtubeContent.Id,
-                        FeatureId = feature.Id
+                        FeatureId = featureId
                     });
                 }
+            }
+        }
+
+        private static IReadOnlyList<string> ParseParticipantLastNames(string participants)
+        {
+            return participants
+                .Split(new[] { ',', ' ' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+
+        private static Dictionary<string, List<int>> BuildFeatureIdsByLastName(
+            IReadOnlyList<ParticipantFeatureMatch> participantMatches)
+        {
+            var featureIdsByLastName = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var participantMatch in participantMatches)
+            {
+                AddFeatureId(featureIdsByLastName, participantMatch.LastNameEng, participantMatch.FeatureId);
+                AddFeatureId(featureIdsByLastName, participantMatch.LastNameGeo, participantMatch.FeatureId);
+            }
+
+            return featureIdsByLastName;
+        }
+
+        private static void AddFeatureId(
+            Dictionary<string, List<int>> featureIdsByLastName,
+            string lastName,
+            int featureId)
+        {
+            if (!featureIdsByLastName.TryGetValue(lastName, out var featureIds))
+            {
+                featureIds = [];
+                featureIdsByLastName[lastName] = featureIds;
+            }
+
+            if (!featureIds.Contains(featureId))
+            {
+                featureIds.Add(featureId);
             }
         }
     }

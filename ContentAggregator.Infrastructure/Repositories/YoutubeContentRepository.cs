@@ -15,68 +15,92 @@ namespace ContentAggregator.Infrastructure.Repositories
             _context = context;
         }
 
-        public async Task<YoutubeContent?> GetYTContentsByIdAsync(int id)
+        public async Task<YoutubeContent?> GetYTContentsByIdAsync(int id, CancellationToken cancellationToken)
         {
-            return await _context.YoutubeContents.FindAsync(id);
+            return await _context.YoutubeContents.FindAsync(new object[] { id }, cancellationToken);
         }
 
-        public async Task<List<YoutubeContent>> GetYTContentsNeedingRefetch()
+        public async Task<List<YoutubeContent>> GetYTContentsNeedingRefetch(CancellationToken cancellationToken)
         {
-            return await _context.YoutubeContents.Where(x => x.NeedsRefetch).ToListAsync();
+            return await _context.YoutubeContents
+                .Where(x => x.NeedsRefetch)
+                .ToListAsync(cancellationToken);
         }
 
-        public async Task<List<YoutubeContent>> GetYTContentsWithoutSubtitles()
+        public async Task<List<YoutubeContent>> GetYTContentsWithoutSubtitles(CancellationToken cancellationToken)
         {
             return await _context.YoutubeContents
                 .Where(x => string.IsNullOrEmpty(x.SubtitlesOrigSRT) && !x.NeedsRefetch)
-                .ToListAsync();
+                .ToListAsync(cancellationToken);
         }
 
-        public async Task<List<YoutubeContent>> GetYTContentsWithoutSummaries()
+        public async Task<List<YoutubeContent>> GetYTContentsWithoutSummaries(CancellationToken cancellationToken)
         {
             return await _context.YoutubeContents
+                .Include(x => x.YoutubeContentFeatures)
                 .Where(x => x.SubtitlesFiltered != null
                             && (string.IsNullOrEmpty(x.VideoSummary)
                                 || string.IsNullOrEmpty(x.YoutubeCommentText)))
-                .ToListAsync();
+                .ToListAsync(cancellationToken);
         }
 
-        public async Task<List<YoutubeContent>> GetYTContentsForFBPost()
+        public async Task<List<YoutubeContent>> GetYTContentsForFBPost(CancellationToken cancellationToken)
         {
             return await _context.YoutubeContents
                 .Where(x => !string.IsNullOrEmpty(x.VideoSummary) && !x.FbPosted)
-                .ToListAsync();
+                .ToListAsync(cancellationToken);
         }
 
-        public async Task<List<YoutubeContent>> GetYTContentsForYoutubeCommentPost()
+        public async Task<List<YoutubeContent>> GetYTContentsForYoutubeCommentPost(CancellationToken cancellationToken)
         {
             return await _context.YoutubeContents
                 .Where(x => !string.IsNullOrEmpty(x.YoutubeCommentText) && !x.YoutubeCommentPosted)
-                .ToListAsync();
+                .ToListAsync(cancellationToken);
         }
 
-        public async Task AddYTContents(List<YoutubeContent> contents)
+        public async Task AddYTContents(List<YoutubeContent> contents, CancellationToken cancellationToken)
         {
-            await _context.YoutubeContents.AddRangeAsync(contents);
-            await _context.SaveChangesAsync();
+            await _context.YoutubeContents.AddRangeAsync(contents, cancellationToken);
         }
 
-        public async Task AddYTContentFeature(YoutubeContentFeature contentFeature)
+        public Task AddYTContentFeature(YoutubeContentFeature contentFeature, CancellationToken cancellationToken)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             _context.YoutubeContentFeatures.Add(contentFeature);
-            await _context.SaveChangesAsync();
+            return Task.CompletedTask;
         }
 
-        public async Task UpdateYTContentsAsync(YoutubeContent yTContent)
+        public Task UpdateYTContentsAsync(YoutubeContent yTContent, CancellationToken cancellationToken)
         {
-            _context.YoutubeContents.Update(yTContent);
-            await _context.SaveChangesAsync();
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var entry = _context.Entry(yTContent);
+            if (entry.State == EntityState.Detached)
+            {
+                _context.YoutubeContents.Attach(yTContent);
+                entry = _context.Entry(yTContent);
+                entry.State = EntityState.Modified;
+            }
+
+            return Task.CompletedTask;
         }
 
-        public async Task UpdateYTContentsRangeAsync(List<YoutubeContent> yTContents)
+        public Task UpdateYTContentsRangeAsync(List<YoutubeContent> yTContents, CancellationToken cancellationToken)
         {
-            _context.YoutubeContents.UpdateRange(yTContents);
-            await _context.SaveChangesAsync();
+            cancellationToken.ThrowIfCancellationRequested();
+
+            foreach (var content in yTContents)
+            {
+                var entry = _context.Entry(content);
+                if (entry.State == EntityState.Detached)
+                {
+                    _context.YoutubeContents.Attach(content);
+                    entry = _context.Entry(content);
+                    entry.State = EntityState.Modified;
+                }
+            }
+
+            return Task.CompletedTask;
         }
 
         public async Task<bool> DeleteYTContentAsync(int id, CancellationToken cancellationToken)
@@ -88,7 +112,6 @@ namespace ContentAggregator.Infrastructure.Repositories
             }
 
             _context.YoutubeContents.Remove(yTContent);
-            await _context.SaveChangesAsync(cancellationToken);
             return true;
         }
 
@@ -134,6 +157,11 @@ namespace ContentAggregator.Infrastructure.Repositories
                 .ToListAsync(cancellationToken);
 
             return new PagedYoutubeContentsResult(total, page, pageSize, items);
+        }
+
+        public async Task SaveChangesAsync(CancellationToken cancellationToken)
+        {
+            await _context.SaveChangesAsync(cancellationToken);
         }
     }
 }

@@ -30,7 +30,7 @@ namespace ContentAggregator.Application.Services.YoutubeComments
 
             try
             {
-                var youtubeContents = await _youtubeContentRepository.GetYTContentsForYoutubeCommentPost();
+                var youtubeContents = await _youtubeContentRepository.GetYTContentsForYoutubeCommentPost(cancellationToken);
                 if (!youtubeContents.Any())
                 {
                     return;
@@ -64,7 +64,8 @@ namespace ContentAggregator.Application.Services.YoutubeComments
                     content.LastProcessingError = null;
                 }
 
-                await _youtubeContentRepository.UpdateYTContentsRangeAsync(youtubeContents);
+                await _youtubeContentRepository.UpdateYTContentsRangeAsync(youtubeContents, cancellationToken);
+                await _youtubeContentRepository.SaveChangesAsync(cancellationToken);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {

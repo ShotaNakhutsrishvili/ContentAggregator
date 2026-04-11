@@ -23,7 +23,7 @@ namespace ContentAggregator.Application.Services.Subtitles
         {
             try
             {
-                var youtubeContents = await _youtubeContentRepository.GetYTContentsWithoutSubtitles();
+                var youtubeContents = await _youtubeContentRepository.GetYTContentsWithoutSubtitles(cancellationToken);
 
                 foreach (var content in youtubeContents)
                 {
@@ -42,7 +42,8 @@ namespace ContentAggregator.Application.Services.Subtitles
                         content.SubtitlesFiltered = downloadedSubtitle.FilteredText;
                         content.LastProcessingError = null;
 
-                        await _youtubeContentRepository.UpdateYTContentsAsync(content);
+                        await _youtubeContentRepository.UpdateYTContentsAsync(content, cancellationToken);
+                        await _youtubeContentRepository.SaveChangesAsync(cancellationToken);
                         _logger.LogInformation(
                             "Subtitles downloaded and filtered successfully for content ID {ContentId}.",
                             content.Id);
@@ -59,7 +60,8 @@ namespace ContentAggregator.Application.Services.Subtitles
 
                         try
                         {
-                            await _youtubeContentRepository.UpdateYTContentsAsync(content);
+                            await _youtubeContentRepository.UpdateYTContentsAsync(content, cancellationToken);
+                            await _youtubeContentRepository.SaveChangesAsync(cancellationToken);
                         }
                         catch (Exception updateEx)
                         {

@@ -26,7 +26,15 @@ namespace ContentAggregator.Infrastructure.Repositories
              .SingleOrDefaultAsync(c => c.Url == url, cancellationToken);
         }
 
-        public async Task<IEnumerable<YTChannel>> GetAllChannelsAsync(CancellationToken cancellationToken)
+        public async Task<IReadOnlyList<YTChannel>> GetAllChannelsForAdminAsync(CancellationToken cancellationToken)
+        {
+            return await _context.YTChannels
+                .AsNoTracking()
+                .OrderBy(x => x.Name)
+                .ToListAsync(cancellationToken);
+        }
+
+        public async Task<IReadOnlyList<YTChannel>> GetActiveChannelsForDiscoveryAsync(CancellationToken cancellationToken)
         {
             return await _context.YTChannels
                 .Where(x => x.ActivityLevel != ChannelActivityLevel.Disabled)
@@ -35,20 +43,24 @@ namespace ContentAggregator.Infrastructure.Repositories
 
         public async Task AddChannelAsync(YTChannel channel, CancellationToken cancellationToken)
         {
-            _context.YTChannels.Add(channel);
-            await _context.SaveChangesAsync(cancellationToken);
+            await _context.YTChannels.AddAsync(channel, cancellationToken);
         }
 
         public async Task<bool> UpdateChannelAsync(YTChannel channel, CancellationToken cancellationToken)
         {
-            var existingChannel = await _context.YTChannels.FindAsync(new object[] { channel.Id }, cancellationToken);
-            if (existingChannel == null)
+            if (!await ChannelExistsAsync(channel.Id, cancellationToken))
             {
                 return false;
             }
 
-            _context.YTChannels.Update(channel);
-            await _context.SaveChangesAsync(cancellationToken);
+            var entry = _context.Entry(channel);
+            if (entry.State == EntityState.Detached)
+            {
+                _context.YTChannels.Attach(channel);
+                entry = _context.Entry(channel);
+                entry.State = EntityState.Modified;
+            }
+
             return true;
         }
 
@@ -61,13 +73,22 @@ namespace ContentAggregator.Infrastructure.Repositories
             }
 
             _context.YTChannels.Remove(channel);
-            await _context.SaveChangesAsync(cancellationToken);
             return true;
         }
 
         public async Task SaveChangesAsync(CancellationToken cancellationToken)
         {
             await _context.SaveChangesAsync(cancellationToken);
+        }
+
+        private async Task<bool> ChannelExistsAsync(string id, CancellationToken cancellationToken)
+        {
+            if (_context.YTChannels.Local.Any(x => x.Id == id))
+            {
+                return true;
+            }
+
+            return await _context.YTChannels.AnyAsync(x => x.Id == id, cancellationToken);
         }
     }
 }

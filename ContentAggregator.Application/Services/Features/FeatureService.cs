@@ -56,12 +56,20 @@ namespace ContentAggregator.Application.Services.Features
             };
 
             await _featureRepository.AddFeatureAsync(featureEntity, cancellationToken);
+            await _featureRepository.SaveChangesAsync(cancellationToken);
             return MapToResponse(featureEntity);
         }
 
         public async Task<bool> DeleteAsync(int id, CancellationToken cancellationToken)
         {
-            return await _featureRepository.DeleteFeatureAsync(id, cancellationToken);
+            var deleted = await _featureRepository.DeleteFeatureAsync(id, cancellationToken);
+            if (!deleted)
+            {
+                return false;
+            }
+
+            await _featureRepository.SaveChangesAsync(cancellationToken);
+            return true;
         }
 
         private static FeatureListItemResponse MapToListItemResponse(Feature feature)
