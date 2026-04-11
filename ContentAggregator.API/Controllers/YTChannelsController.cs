@@ -1,6 +1,5 @@
 ﻿using ContentAggregator.Application.Interfaces;
-using ContentAggregator.Core.Entities;
-using ContentAggregator.Core.Models.DTOs;
+using ContentAggregator.Application.Models.Youtube;
 using Microsoft.AspNetCore.Mvc;
 
 namespace ContentAggregator.API.Controllers
@@ -17,14 +16,17 @@ namespace ContentAggregator.API.Controllers
         }
 
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<YTChannel>>> GetYTChannels(CancellationToken cancellationToken)
+        public async Task<ActionResult<IReadOnlyList<YoutubeChannelListItemResponse>>> GetYTChannels(
+            CancellationToken cancellationToken)
         {
             var result = await _youtubeChannelService.GetAllAsync(cancellationToken);
             return Ok(result);
         }
 
         [HttpGet("{id}")]
-        public async Task<ActionResult<YTChannel>> GetYTChannel(string id, CancellationToken cancellationToken)
+        public async Task<ActionResult<YoutubeChannelDetailResponse>> GetYTChannel(
+            string id,
+            CancellationToken cancellationToken)
         {
             var channel = await _youtubeChannelService.GetByIdAsync(id, cancellationToken);
             if (channel == null)
@@ -36,13 +38,13 @@ namespace ContentAggregator.API.Controllers
         }
 
         [HttpPut("{id}")]
-        public async Task<IActionResult> PutYTChannel(
+        public async Task<ActionResult<YoutubeChannelDetailResponse>> PutYTChannel(
             string id,
             [FromHeader(Name = "Prefer")] string? preferHeader,
-            [FromBody] YtChannelDto yTChannelDto,
+            [FromBody] UpdateYoutubeChannelRequest request,
             CancellationToken cancellationToken)
         {
-            var existingChannel = await _youtubeChannelService.UpdateAsync(id, yTChannelDto, cancellationToken);
+            var existingChannel = await _youtubeChannelService.UpdateAsync(id, request, cancellationToken);
             if (existingChannel == null)
             {
                 return NotFound();
@@ -53,11 +55,11 @@ namespace ContentAggregator.API.Controllers
         }
 
         [HttpPost]
-        public async Task<ActionResult<YTChannel>> PostYTChannel(
-            [FromBody] YtChannelDto channelDto,
+        public async Task<ActionResult<YoutubeChannelDetailResponse>> PostYTChannel(
+            [FromBody] CreateYoutubeChannelRequest request,
             CancellationToken cancellationToken)
         {
-            var result = await _youtubeChannelService.CreateAsync(channelDto, cancellationToken);
+            var result = await _youtubeChannelService.CreateAsync(request, cancellationToken);
             if (!result.Success)
             {
                 return BadRequest(result.ErrorMessage);
@@ -79,12 +81,11 @@ namespace ContentAggregator.API.Controllers
         }
 
         [HttpPost("videos")]
-        public async Task<ActionResult<YoutubeContent>> PostYoutubeVideo(
-            [FromQuery] Uri videoUrl,
-            [FromQuery] string? channelSuffix,
+        public async Task<ActionResult<YoutubeVideoResponse>> PostYoutubeVideo(
+            [FromQuery] CreateYoutubeVideoRequest request,
             CancellationToken cancellationToken)
         {
-            var result = await _youtubeChannelService.CreateVideoAsync(videoUrl, channelSuffix, cancellationToken);
+            var result = await _youtubeChannelService.CreateVideoAsync(request, cancellationToken);
             if (result.NotFound)
             {
                 return NotFound(result.ErrorMessage);
@@ -97,8 +98,8 @@ namespace ContentAggregator.API.Controllers
 
             return CreatedAtAction(
                 nameof(GetYTChannel),
-                new { id = result.ChannelId! },
-                result.YoutubeContent);
+                new { id = result.Video!.ChannelId },
+                result.Video);
         }
     }
 }

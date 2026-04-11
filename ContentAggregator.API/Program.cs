@@ -59,10 +59,6 @@ namespace ContentAggregator.API
                     {
                         var problemDetails = new CustomValidationProblemDetails(context, builder.Environment); return new BadRequestObjectResult(problemDetails);
                     };
-                })
-                .AddJsonOptions(options =>
-                {
-                    options.JsonSerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
                 });
             // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
             builder.Services.AddEndpointsApiExplorer();
@@ -78,6 +74,7 @@ namespace ContentAggregator.API
             builder.Services.AddScoped<IYTChannelRepository, YTChannelRepository>();
             builder.Services.AddScoped<IYoutubeContentRepository, YoutubeContentRepository>();
             builder.Services.AddScoped<IFeatureService, FeatureService>();
+            builder.Services.AddScoped<IFacebookPostService, FacebookPostService>();
             builder.Services.AddScoped<IFacebookPublishingWorkflow, FacebookPublishingWorkflow>();
             builder.Services.AddScoped<ISubtitleWorkflow, SubtitleWorkflow>();
             builder.Services.AddScoped<ISubtitleDownloader, YtDlpSubtitleDownloader>();

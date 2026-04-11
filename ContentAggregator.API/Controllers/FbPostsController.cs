@@ -1,5 +1,5 @@
 ﻿using ContentAggregator.Application.Interfaces;
-using ContentAggregator.Core.Models;
+using ContentAggregator.Application.Models.Facebook;
 using Microsoft.AspNetCore.Mvc;
 
 namespace ContentAggregator.API.Controllers
@@ -8,34 +8,25 @@ namespace ContentAggregator.API.Controllers
     [ApiController]
     public class FbPostsController : ControllerBase
     {
-        private readonly IFacebookPublisher _facebookPublisher;
+        private readonly IFacebookPostService _facebookPostService;
 
-        public FbPostsController(IFacebookPublisher facebookPublisher)
+        public FbPostsController(IFacebookPostService facebookPostService)
         {
-            _facebookPublisher = facebookPublisher;
+            _facebookPostService = facebookPostService;
         }
 
-        // POST: api/FbPosts
         [HttpPost]
-        public async Task<IActionResult> SharePost(Post post)
+        public async Task<ActionResult<FacebookPostResponse>> SharePost(
+            [FromBody] PublishFacebookPostRequest request,
+            CancellationToken cancellationToken)
         {
-            try
+            var result = await _facebookPostService.SharePostAsync(request, cancellationToken);
+            if (!result.Success)
             {
-                var result = await _facebookPublisher.SharePostAsync(
-                    post.PageId,
-                    post.Url?.ToString(),
-                    post.CustomText);
-                if (!result.Success)
-                {
-                    return BadRequest(new { result.Message });
-                }
+                return BadRequest(result.ErrorMessage);
+            }
 
-                return Ok(new { result.Message, result.PostId });
-            }
-            catch (InvalidOperationException ex)
-            {
-                return BadRequest(ex.Message);
-            }
+            return Ok(result.Post);
         }
     }
 }
