@@ -1,5 +1,5 @@
 using ContentAggregator.Application.Interfaces;
-using ContentAggregator.Core.Models;
+using ContentAggregator.Application.Support;
 using Microsoft.Extensions.Logging;
 
 namespace ContentAggregator.Application.Services.Facebook
@@ -52,7 +52,7 @@ namespace ContentAggregator.Application.Services.Facebook
                     cancellationToken.ThrowIfCancellationRequested();
 
                     var postUrl = $"https://www.youtube.com/watch?v={content.VideoId}";
-                    var disclaimer = Constants.GetAiSummaryDisclaimer(content.SubtitleLanguage);
+                    var disclaimer = AiSummaryDisclaimer.GetText(content.SubtitleLanguage);
                     var message = content.VideoSummary + $"\n\n{disclaimer}";
                     var publishResult = await _facebookPublisher.SharePostAsync(
                         _facebookPublisher.DefaultPageId!,

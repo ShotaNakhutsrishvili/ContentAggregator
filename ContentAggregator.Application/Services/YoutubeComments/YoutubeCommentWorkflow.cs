@@ -1,5 +1,5 @@
 using ContentAggregator.Application.Interfaces;
-using ContentAggregator.Core.Models;
+using ContentAggregator.Application.Support;
 using Microsoft.Extensions.Logging;
 
 namespace ContentAggregator.Application.Services.YoutubeComments
@@ -79,7 +79,7 @@ namespace ContentAggregator.Application.Services.YoutubeComments
 
         private static string BuildCommentText(string summary, Core.Entities.SubtitleLanguage subtitleLanguage)
         {
-            var disclaimer = Constants.GetAiSummaryDisclaimer(subtitleLanguage);
+            var disclaimer = AiSummaryDisclaimer.GetText(subtitleLanguage);
             var result = summary + Environment.NewLine + Environment.NewLine + disclaimer;
             const int maxLen = 900;
             if (result.Length <= maxLen)
