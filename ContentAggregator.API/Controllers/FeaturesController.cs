@@ -1,7 +1,6 @@
 ﻿using ContentAggregator.Application.Interfaces;
+using ContentAggregator.Application.Models.Features;
 using Microsoft.AspNetCore.Mvc;
-using ContentAggregator.Core.Entities;
-using ContentAggregator.Core.Models.DTOs;
 
 namespace ContentAggregator.API.Controllers
 {
@@ -18,7 +17,7 @@ namespace ContentAggregator.API.Controllers
 
         // GET: api/Features
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Feature>>> GetFeatures(CancellationToken cancellationToken)
+        public async Task<ActionResult<IReadOnlyList<FeatureListItemResponse>>> GetFeatures(CancellationToken cancellationToken)
         {
             var result = await _featureService.GetAllAsync(cancellationToken);
 
@@ -26,8 +25,8 @@ namespace ContentAggregator.API.Controllers
         }
 
         // GET: api/Features/5
-        [HttpGet("{id}")]
-        public async Task<ActionResult<Feature>> GetFeature(int id, CancellationToken cancellationToken)
+        [HttpGet("{id:int}")]
+        public async Task<ActionResult<FeatureResponse>> GetFeature(int id, CancellationToken cancellationToken)
         {
             var feature = await _featureService.GetByIdAsync(id, cancellationToken);
 
@@ -41,8 +40,12 @@ namespace ContentAggregator.API.Controllers
 
         // PUT: api/Features/5
         // To protect from overposting attacks, see https://go.microsoft.com/fwlink/?linkid=2123754 #TODO: Check this auto-generated link
-        [HttpPut("{id}")]
-        public async Task<IActionResult> PutFeature(int id, [FromHeader(Name = "Prefer")] string? preferHeader, [FromBody] FeatureDto feature, CancellationToken cancellationToken)
+        [HttpPut("{id:int}")]
+        public async Task<ActionResult<FeatureResponse>> PutFeature(
+            int id,
+            [FromHeader(Name = "Prefer")] string? preferHeader,
+            [FromBody] UpdateFeatureRequest feature,
+            CancellationToken cancellationToken)
         {
             var existingFeature = await _featureService.UpdateAsync(id, feature, cancellationToken);
             if (existingFeature == null)
@@ -60,19 +63,22 @@ namespace ContentAggregator.API.Controllers
         [HttpPost]
         //[ServiceFilter(typeof(ValidateModelFilter))]
         //[ValidateModelFilter]
-        public async Task<ActionResult<Feature>> PostFeature([FromHeader(Name = "Prefer")] string? preferHeader, [FromBody] FeatureDto featureDto, CancellationToken cancellationToken)
+        public async Task<ActionResult<FeatureResponse>> PostFeature(
+            [FromHeader(Name = "Prefer")] string? preferHeader,
+            [FromBody] CreateFeatureRequest request,
+            CancellationToken cancellationToken)
         {
-            var featureEntity = await _featureService.CreateAsync(featureDto, cancellationToken);
+            var feature = await _featureService.CreateAsync(request, cancellationToken);
 
             bool wantsMinimalResponse = preferHeader?.Contains("return=minimal") ?? false;
 
             return wantsMinimalResponse
                 ? NoContent()
-                : CreatedAtAction(nameof(GetFeature), new { id = featureEntity.Id }, featureEntity);
+                : CreatedAtAction(nameof(GetFeature), new { id = feature.Id }, feature);
         }
 
         // DELETE: api/Features/5
-        [HttpDelete("{id}")]
+        [HttpDelete("{id:int}")]
         public async Task<IActionResult> DeleteFeature(int id, CancellationToken cancellationToken)
         {
             var result = await _featureService.DeleteAsync(id, cancellationToken);

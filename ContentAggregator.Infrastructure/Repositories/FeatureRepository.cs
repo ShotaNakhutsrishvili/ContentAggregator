@@ -22,8 +22,8 @@ namespace ContentAggregator.Infrastructure.Repositories
         public async Task<IEnumerable<Feature>> GetAllFeaturesAsync(CancellationToken cancellationToken)
         {
             return await _context.Features
-                            .Include(f => f.YoutubeContents)
-                            .ToListAsync(cancellationToken);
+                .AsNoTracking()
+                .ToListAsync(cancellationToken);
         }
 
         public async Task AddFeatureAsync(Feature feature, CancellationToken cancellationToken)

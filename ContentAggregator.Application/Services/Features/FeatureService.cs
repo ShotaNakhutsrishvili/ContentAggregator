@@ -1,6 +1,6 @@
 using ContentAggregator.Application.Interfaces;
+using ContentAggregator.Application.Models.Features;
 using ContentAggregator.Core.Entities;
-using ContentAggregator.Core.Models.DTOs;
 
 namespace ContentAggregator.Application.Services.Features
 {
@@ -13,17 +13,21 @@ namespace ContentAggregator.Application.Services.Features
             _featureRepository = featureRepository;
         }
 
-        public async Task<IEnumerable<Feature>> GetAllAsync(CancellationToken cancellationToken)
+        public async Task<IReadOnlyList<FeatureListItemResponse>> GetAllAsync(CancellationToken cancellationToken)
         {
-            return await _featureRepository.GetAllFeaturesAsync(cancellationToken);
+            var features = await _featureRepository.GetAllFeaturesAsync(cancellationToken);
+            return features
+                .Select(MapToListItemResponse)
+                .ToList();
         }
 
-        public async Task<Feature?> GetByIdAsync(int id, CancellationToken cancellationToken)
+        public async Task<FeatureResponse?> GetByIdAsync(int id, CancellationToken cancellationToken)
         {
-            return await _featureRepository.GetFeatureByIdAsync(id, cancellationToken);
+            var feature = await _featureRepository.GetFeatureByIdAsync(id, cancellationToken);
+            return feature == null ? null : MapToResponse(feature);
         }
 
-        public async Task<Feature?> UpdateAsync(int id, FeatureDto feature, CancellationToken cancellationToken)
+        public async Task<FeatureResponse?> UpdateAsync(int id, UpdateFeatureRequest feature, CancellationToken cancellationToken)
         {
             var existingFeature = await _featureRepository.GetFeatureByIdAsync(id, cancellationToken);
             if (existingFeature == null)
@@ -38,10 +42,10 @@ namespace ContentAggregator.Application.Services.Features
             existingFeature.UpdatedAt = DateTimeOffset.UtcNow;
 
             await _featureRepository.SaveChangesAsync(cancellationToken);
-            return existingFeature;
+            return MapToResponse(existingFeature);
         }
 
-        public async Task<Feature> CreateAsync(FeatureDto feature, CancellationToken cancellationToken)
+        public async Task<FeatureResponse> CreateAsync(CreateFeatureRequest feature, CancellationToken cancellationToken)
         {
             var featureEntity = new Feature
             {
@@ -52,12 +56,36 @@ namespace ContentAggregator.Application.Services.Features
             };
 
             await _featureRepository.AddFeatureAsync(featureEntity, cancellationToken);
-            return featureEntity;
+            return MapToResponse(featureEntity);
         }
 
         public async Task<bool> DeleteAsync(int id, CancellationToken cancellationToken)
         {
             return await _featureRepository.DeleteFeatureAsync(id, cancellationToken);
+        }
+
+        private static FeatureListItemResponse MapToListItemResponse(Feature feature)
+        {
+            return new FeatureListItemResponse(
+                feature.Id,
+                feature.FirstNameEng,
+                feature.LastNameEng,
+                feature.FirstNameGeo,
+                feature.LastNameGeo,
+                feature.CreatedAt,
+                feature.UpdatedAt);
+        }
+
+        private static FeatureResponse MapToResponse(Feature feature)
+        {
+            return new FeatureResponse(
+                feature.Id,
+                feature.FirstNameEng,
+                feature.LastNameEng,
+                feature.FirstNameGeo,
+                feature.LastNameGeo,
+                feature.CreatedAt,
+                feature.UpdatedAt);
         }
     }
 }
