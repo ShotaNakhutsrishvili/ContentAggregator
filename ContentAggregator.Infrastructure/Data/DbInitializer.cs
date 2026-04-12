@@ -5,45 +5,54 @@ namespace ContentAggregator.Infrastructure.Data
 {
     public static class DbInitializer
     {
-        public static void Initialize(DatabaseContext context)
+        public static Task ApplyMigrationsAsync(
+            DatabaseContext context,
+            CancellationToken cancellationToken = default)
         {
-            context.Database.Migrate();
+            return context.Database.MigrateAsync(cancellationToken);
+        }
 
-            if (context.Features.Any())
-            {
-                return;
-            }
-
+        public static async Task SeedDevelopmentDataAsync(
+            DatabaseContext context,
+            CancellationToken cancellationToken = default)
+        {
             var features = new Feature[]
             {
                 new() { FirstNameEng = "Irakli", LastNameEng = "Gogava", FirstNameGeo = "ირაკლი", LastNameGeo = "გოგავა" },
                 new() { FirstNameEng = "Soso", LastNameEng = "Manjavidze", FirstNameGeo = "სოსო", LastNameGeo = "მანჯავიძე" }
             };
 
-            foreach (Feature feature in features)
+            foreach (var feature in features)
             {
-                context.Features.Add(feature);
+                var exists = await context.Features.AnyAsync(
+                    existing =>
+                        existing.FirstNameEng == feature.FirstNameEng
+                        && existing.LastNameEng == feature.LastNameEng,
+                    cancellationToken);
+
+                if (!exists)
+                {
+                    context.Features.Add(feature);
+                }
             }
 
-            context.SaveChanges();
-
-            var ytChannels = new YTChannel[]
+            if (!await context.YTChannels.AnyAsync(
+                    channel => channel.Id == "UCIblVXoJdqdkIf694p3R6Wg",
+                    cancellationToken))
             {
-                new()
+                context.YTChannels.Add(new YTChannel
                 {
                     Name = "Salte",
                     Id = "UCIblVXoJdqdkIf694p3R6Wg",
                     Url = new Uri("https://www.youtube.com/@salte1481"),
                     ActivityLevel = ChannelActivityLevel.Medium
-                }
-            };
-
-            foreach (YTChannel ytChannel in ytChannels)
-            {
-                context.YTChannels.Add(ytChannel);
+                });
             }
 
-            context.SaveChanges();
+            if (context.ChangeTracker.HasChanges())
+            {
+                await context.SaveChangesAsync(cancellationToken);
+            }
         }
     }
 }

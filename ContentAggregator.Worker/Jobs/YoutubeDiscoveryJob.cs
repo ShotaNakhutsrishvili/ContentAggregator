@@ -1,21 +1,18 @@
 using ContentAggregator.Application.Interfaces;
 using Hangfire;
 
-namespace ContentAggregator.API.Services.BackgroundServices
+namespace ContentAggregator.Worker.Jobs
 {
-    /// <summary>
-    /// Hangfire entrypoint for subtitle processing.
-    /// </summary>
-    public class SubtitleService
+    public sealed class YoutubeDiscoveryJob
     {
-        private readonly ISubtitleWorkflow _workflow;
+        private readonly IYoutubeDiscoveryWorkflow _workflow;
 
-        public SubtitleService(ISubtitleWorkflow workflow)
+        public YoutubeDiscoveryJob(IYoutubeDiscoveryWorkflow workflow)
         {
             _workflow = workflow;
         }
 
-        [DisableConcurrentExecution(60 * 40)]
+        [DisableConcurrentExecution(60 * 60)]
         public async Task ProcessOnceAsync()
         {
             await ProcessOnceAsync(CancellationToken.None);

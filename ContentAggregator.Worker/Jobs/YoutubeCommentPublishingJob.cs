@@ -1,18 +1,18 @@
-﻿using ContentAggregator.Application.Interfaces;
+using ContentAggregator.Application.Interfaces;
 using Hangfire;
 
-namespace ContentAggregator.API.Services.BackgroundServices
+namespace ContentAggregator.Worker.Jobs
 {
-    public class YoutubeService
+    public sealed class YoutubeCommentPublishingJob
     {
-        private readonly IYoutubeDiscoveryWorkflow _workflow;
+        private readonly IYoutubeCommentWorkflow _workflow;
 
-        public YoutubeService(IYoutubeDiscoveryWorkflow workflow)
+        public YoutubeCommentPublishingJob(IYoutubeCommentWorkflow workflow)
         {
             _workflow = workflow;
         }
 
-        [DisableConcurrentExecution(60 * 60)]
+        [DisableConcurrentExecution(60 * 10)]
         public async Task ProcessOnceAsync()
         {
             await ProcessOnceAsync(CancellationToken.None);

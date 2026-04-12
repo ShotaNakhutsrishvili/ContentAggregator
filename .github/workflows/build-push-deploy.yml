@@ -14,10 +14,11 @@ on:
 
 env:
   REGISTRY: docker.io
-  IMAGE_NAME: ${{ secrets.DOCKER_USERNAME }}/content-aggregator
-  CONTAINER_NAME: content-aggregator
+  API_IMAGE_NAME: ${{ secrets.DOCKER_USERNAME }}/content-aggregator-api
+  WORKER_IMAGE_NAME: ${{ secrets.DOCKER_USERNAME }}/content-aggregator-worker
+  API_CONTAINER_NAME: content-aggregator-api
+  WORKER_CONTAINER_NAME: content-aggregator-worker
   NETWORK_NAME: contentaggregator-network
-  YTDLP_DIR: yt-dlp-tools
 
 jobs:
   build:
@@ -40,56 +41,87 @@ jobs:
 
       - name: Stop and Remove Old Container
         run: |
-          docker stop ${{ env.CONTAINER_NAME }} || true
-          docker rm ${{ env.CONTAINER_NAME }} || true
+          docker stop ${{ env.API_CONTAINER_NAME }} || true
+          docker rm ${{ env.API_CONTAINER_NAME }} || true
+          docker stop ${{ env.WORKER_CONTAINER_NAME }} || true
+          docker rm ${{ env.WORKER_CONTAINER_NAME }} || true
 
-      - name: Remove Old Docker Image
+      - name: Remove Old Docker Images
         run: |
-          docker rmi ${{ env.IMAGE_NAME }}:latest || true
+          docker rmi ${{ env.API_IMAGE_NAME }}:latest || true
+          docker rmi ${{ env.WORKER_IMAGE_NAME }}:latest || true
 
-      - name: Build and push Docker image
+      - name: Build and push API image
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile
           push: true
+          build-args: |
+            PROJECT_PATH=ContentAggregator.API/ContentAggregator.API.csproj
+            APP_DLL=ContentAggregator.API.dll
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.run_number }}
+            ${{ env.REGISTRY }}/${{ env.API_IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.API_IMAGE_NAME }}:${{ github.run_number }}
+
+      - name: Build and push Worker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          build-args: |
+            PROJECT_PATH=ContentAggregator.Worker/ContentAggregator.Worker.csproj
+            APP_DLL=ContentAggregator.Worker.dll
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.WORKER_IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.WORKER_IMAGE_NAME }}:${{ github.run_number }}
 
       - name: Create Docker Network
         run: docker network create ${{ env.NETWORK_NAME }} || true
 
-      - name: Clean up previous dev-cert and yt-dlp
+      - name: Clean up previous dev-cert
         run: |
           rm -f dev-cert.pfx
-          rm -rf ${{ env.YTDLP_DIR }}
 
       - name: Decode and Save dev-cert
         run: |
           echo "${{ secrets.DEV_CERT }}" | base64 --decode > dev-cert.pfx
 
-      - name: Prepare new yt-dlp Binary
+      - name: Apply database migrations
         run: |
-          mkdir -p ${{ env.YTDLP_DIR }}
-          curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o ${{ env.YTDLP_DIR }}/yt-dlp
-          chmod +x ${{ env.YTDLP_DIR }}/yt-dlp
+          docker run --rm \
+            --network ${{ env.NETWORK_NAME }} \
+            -e CONNECTIONSTRINGS__POSTGRESQLCONNECTION="${{ secrets.CONNECTIONSTRINGS__POSTGRESQLCONNECTION }}" \
+            ${{ env.REGISTRY }}/${{ env.WORKER_IMAGE_NAME }}:latest \
+            bootstrap
 
-      - name: Deploy New Container
+      - name: Deploy API container
         run: |
           docker run -d \
-            --name ${{ env.CONTAINER_NAME }} \
+            --name ${{ env.API_CONTAINER_NAME }} \
             --network ${{ env.NETWORK_NAME }} \
             -v "$(pwd)/dev-cert.pfx:/etc/ssl/certs/dev-cert.pfx" \
-            -v "$(pwd)/${{ env.YTDLP_DIR }}:/app/tools" \
             -p 80:80 \
             -p 443:443 \
-            -e CERT_PASSWORD="${{ secrets.CERT_PASSWORD }}" \
-            -e AZURETRANSLATORTOKEN="${{ secrets.AZURETRANSLATORTOKEN }}" \
-            -e AZURETRANSLATORURL="${{ secrets.AZURETRANSLATORURL }}" \
             -e CONNECTIONSTRINGS__POSTGRESQLCONNECTION="${{ secrets.CONNECTIONSTRINGS__POSTGRESQLCONNECTION }}" \
-            -e FACEBOOKACCESSTOKEN="${{ secrets.FACEBOOKACCESSTOKEN }}" \
-            -e FBPAGEID="${{ secrets.FBPAGEID }}" \
-            -e LMSTUDIOAPIURL="${{ secrets.LMSTUDIOAPIURL }}" \
-            -e YOUTUBEACCESSTOKEN="${{ secrets.YOUTUBEACCESSTOKEN }}" \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            -e FACEBOOK__ACCESSTOKEN="${{ secrets.FACEBOOKACCESSTOKEN }}" \
+            -e FACEBOOK__PAGEID="${{ secrets.FBPAGEID }}" \
+            -e HTTPSCERTIFICATE__PASSWORD="${{ secrets.CERT_PASSWORD }}" \
+            -e LMSTUDIO__BASEURL="${{ secrets.LMSTUDIOAPIURL }}" \
+            -e YOUTUBEAPI__APIKEY="${{ secrets.YOUTUBEACCESSTOKEN }}" \
+            -e YOUTUBECOMMENT__OAUTHACCESSTOKEN="${{ secrets.YOUTUBEOAUTHACCESSTOKEN }}" \
+            ${{ env.REGISTRY }}/${{ env.API_IMAGE_NAME }}:latest
+
+      - name: Deploy Worker container
+        run: |
+          docker run -d \
+            --name ${{ env.WORKER_CONTAINER_NAME }} \
+            --network ${{ env.NETWORK_NAME }} \
+            -e CONNECTIONSTRINGS__POSTGRESQLCONNECTION="${{ secrets.CONNECTIONSTRINGS__POSTGRESQLCONNECTION }}" \
+            -e FACEBOOK__ACCESSTOKEN="${{ secrets.FACEBOOKACCESSTOKEN }}" \
+            -e FACEBOOK__PAGEID="${{ secrets.FBPAGEID }}" \
+            -e LMSTUDIO__BASEURL="${{ secrets.LMSTUDIOAPIURL }}" \
+            -e YOUTUBEAPI__APIKEY="${{ secrets.YOUTUBEACCESSTOKEN }}" \
+            -e YOUTUBECOMMENT__OAUTHACCESSTOKEN="${{ secrets.YOUTUBEOAUTHACCESSTOKEN }}" \
+            ${{ env.REGISTRY }}/${{ env.WORKER_IMAGE_NAME }}:latest

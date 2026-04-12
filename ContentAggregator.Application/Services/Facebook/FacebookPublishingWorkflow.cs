@@ -30,7 +30,7 @@ namespace ContentAggregator.Application.Services.Facebook
 
             if (string.IsNullOrWhiteSpace(_facebookPublisher.DefaultPageId))
             {
-                _logger.LogWarning("Skipping Facebook publishing job because FbPageId is not configured.");
+                _logger.LogWarning("Skipping Facebook publishing job because Facebook:PageId is not configured.");
                 return;
             }
 

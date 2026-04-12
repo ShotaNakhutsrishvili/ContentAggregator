@@ -1,21 +1,25 @@
 # Build stage
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+ARG PROJECT_PATH=ContentAggregator.API/ContentAggregator.API.csproj
 WORKDIR /src
 # Copy project files and restore dependencies
+COPY ["ContentAggregator.sln", "./"]
 COPY ["ContentAggregator.API/ContentAggregator.API.csproj", "ContentAggregator.API/"]
+COPY ["ContentAggregator.Worker/ContentAggregator.Worker.csproj", "ContentAggregator.Worker/"]
+COPY ["ContentAggregator.Application/ContentAggregator.Application.csproj", "ContentAggregator.Application/"]
 COPY ["ContentAggregator.Core/ContentAggregator.Core.csproj", "ContentAggregator.Core/"]
 COPY ["ContentAggregator.Infrastructure/ContentAggregator.Infrastructure.csproj", "ContentAggregator.Infrastructure/"]
-RUN dotnet restore "ContentAggregator.API/ContentAggregator.API.csproj"
+RUN dotnet restore "ContentAggregator.sln"
 # Copy all source code and build
 COPY . .
-WORKDIR "/src/ContentAggregator.API"
-RUN dotnet build "ContentAggregator.API.csproj" -c Release -o /app/build
+RUN dotnet build "ContentAggregator.sln" -c Release --no-restore
 
 #FROM build AS publish
-RUN dotnet publish "ContentAggregator.API.csproj" -c Release -o /app/publish
+RUN dotnet publish "$PROJECT_PATH" -c Release -o /app/publish --no-restore
 
 # Runtime stage
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+ARG APP_DLL=ContentAggregator.API.dll
 WORKDIR /app
 
 # Install ffmpeg + yt-dlp dependencies
@@ -27,9 +31,11 @@ COPY --from=build /app/publish .
 
 # Configure environment and expose port
 ENV ASPNETCORE_ENVIRONMENT=Production
+ENV DOTNET_ENVIRONMENT=Production
 ENV ASPNETCORE_URLS=http://+:80;https://+:443
+ENV APP_DLL=${APP_DLL}
 EXPOSE 80
 EXPOSE 443
 
 # Define entry point
-ENTRYPOINT ["dotnet", "ContentAggregator.API.dll"]
+ENTRYPOINT ["sh", "-c", "exec dotnet \"$APP_DLL\" \"$@\"", "--"]

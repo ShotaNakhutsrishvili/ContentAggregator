@@ -24,7 +24,7 @@ namespace ContentAggregator.Application.Services.YoutubeComments
         {
             if (!_youtubeCommentPublisher.IsConfigured)
             {
-                _logger.LogWarning("Skipping YouTube comment job because YoutubeOAuthAccessToken is not configured.");
+                _logger.LogWarning("Skipping YouTube comment job because YoutubeComment:OAuthAccessToken is not configured.");
                 return;
             }
 

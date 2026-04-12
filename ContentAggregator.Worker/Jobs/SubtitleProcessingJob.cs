@@ -1,21 +1,18 @@
 using ContentAggregator.Application.Interfaces;
 using Hangfire;
 
-namespace ContentAggregator.API.Services.BackgroundServices
+namespace ContentAggregator.Worker.Jobs
 {
-    /// <summary>
-    /// Hangfire entrypoint for Facebook publishing.
-    /// </summary>
-    public class FacebookService
+    public sealed class SubtitleProcessingJob
     {
-        private readonly IFacebookPublishingWorkflow _workflow;
+        private readonly ISubtitleWorkflow _workflow;
 
-        public FacebookService(IFacebookPublishingWorkflow workflow)
+        public SubtitleProcessingJob(ISubtitleWorkflow workflow)
         {
             _workflow = workflow;
         }
 
-        [DisableConcurrentExecution(60 * 10)]
+        [DisableConcurrentExecution(60 * 40)]
         public async Task ProcessOnceAsync()
         {
             await ProcessOnceAsync(CancellationToken.None);

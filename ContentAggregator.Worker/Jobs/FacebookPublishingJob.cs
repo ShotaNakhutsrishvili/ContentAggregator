@@ -1,16 +1,13 @@
 using ContentAggregator.Application.Interfaces;
 using Hangfire;
 
-namespace ContentAggregator.API.Services.BackgroundServices
+namespace ContentAggregator.Worker.Jobs
 {
-    /// <summary>
-    /// Hangfire entrypoint for YouTube comment publishing.
-    /// </summary>
-    public class YoutubeCommentService
+    public sealed class FacebookPublishingJob
     {
-        private readonly IYoutubeCommentWorkflow _workflow;
+        private readonly IFacebookPublishingWorkflow _workflow;
 
-        public YoutubeCommentService(IYoutubeCommentWorkflow workflow)
+        public FacebookPublishingJob(IFacebookPublishingWorkflow workflow)
         {
             _workflow = workflow;
         }

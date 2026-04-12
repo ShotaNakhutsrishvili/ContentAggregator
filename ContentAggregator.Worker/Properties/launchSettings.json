@@ -1,0 +1,19 @@
+{
+  "profiles": {
+    "ContentAggregator.Worker": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development"
+      }
+    },
+    "ContentAggregator.Worker.DatabaseBootstrap": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "commandLineArgs": "bootstrap --seed-development-data",
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development"
+      }
+    }
+  }
+}
