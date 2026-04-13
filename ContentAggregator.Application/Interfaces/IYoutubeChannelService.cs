@@ -1,21 +1,29 @@
 using ContentAggregator.Application.Models.Youtube;
+using ContentAggregator.Core.Entities;
 
 namespace ContentAggregator.Application.Interfaces
 {
     public interface IYoutubeChannelService
     {
-        Task<IReadOnlyList<YoutubeChannelListItemResponse>> GetAllAsync(CancellationToken cancellationToken);
-        Task<YoutubeChannelDetailResponse?> GetByIdAsync(string id, CancellationToken cancellationToken);
-        Task<YoutubeChannelDetailResponse?> UpdateAsync(
+        Task<IReadOnlyList<YTChannel>> GetAllAsync(CancellationToken cancellationToken);
+        Task<YTChannel?> GetByIdAsync(string id, CancellationToken cancellationToken);
+        Task<YTChannel?> UpdateAsync(
             string id,
-            UpdateYoutubeChannelRequest request,
+            string channelSuffix,
+            ChannelActivityLevel activityLevel,
+            string? channelTitle,
+            string? titleKeywords,
             CancellationToken cancellationToken);
         Task<CreateYoutubeChannelResult> CreateAsync(
-            CreateYoutubeChannelRequest request,
+            string channelSuffix,
+            ChannelActivityLevel activityLevel,
+            string? channelTitle,
+            string? titleKeywords,
             CancellationToken cancellationToken);
         Task<bool> DeleteAsync(string id, CancellationToken cancellationToken);
         Task<CreateYoutubeVideoResult> CreateVideoAsync(
-            CreateYoutubeVideoRequest request,
+            Uri videoUrl,
+            string? channelSuffix,
             CancellationToken cancellationToken);
     }
 }

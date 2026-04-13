@@ -18,24 +18,22 @@ namespace ContentAggregator.Application.Services.Youtube
             _youtubeMetadataClient = youtubeMetadataClient;
         }
 
-        public async Task<IReadOnlyList<YoutubeChannelListItemResponse>> GetAllAsync(CancellationToken cancellationToken)
+        public async Task<IReadOnlyList<YTChannel>> GetAllAsync(CancellationToken cancellationToken)
         {
-            var channels = await _channelRepository.GetAllChannelsForAdminAsync(cancellationToken);
-
-            return channels
-                .Select(MapToListItemResponse)
-                .ToList();
+            return await _channelRepository.GetAllChannelsForAdminAsync(cancellationToken);
         }
 
-        public async Task<YoutubeChannelDetailResponse?> GetByIdAsync(string id, CancellationToken cancellationToken)
+        public async Task<YTChannel?> GetByIdAsync(string id, CancellationToken cancellationToken)
         {
-            var channel = await _channelRepository.GetChannelByIdAsync(id, cancellationToken);
-            return channel == null ? null : MapToDetailResponse(channel);
+            return await _channelRepository.GetChannelByIdAsync(id, cancellationToken);
         }
 
-        public async Task<YoutubeChannelDetailResponse?> UpdateAsync(
+        public async Task<YTChannel?> UpdateAsync(
             string id,
-            UpdateYoutubeChannelRequest request,
+            string channelSuffix,
+            ChannelActivityLevel activityLevel,
+            string? channelTitle,
+            string? titleKeywords,
             CancellationToken cancellationToken)
         {
             var existingChannel = await _channelRepository.GetChannelByIdAsync(id, cancellationToken);
@@ -44,26 +42,29 @@ namespace ContentAggregator.Application.Services.Youtube
                 return null;
             }
 
-            existingChannel.Name = string.IsNullOrWhiteSpace(request.ChannelTitle)
+            existingChannel.Name = string.IsNullOrWhiteSpace(channelTitle)
                 ? existingChannel.Name
-                : request.ChannelTitle;
-            existingChannel.Url = BuildYoutubeChannelUri(request.ChannelSuffix);
-            existingChannel.ActivityLevel = request.ActivityLevel;
-            existingChannel.TitleKeywords = request.TitleKeywords;
+                : channelTitle;
+            existingChannel.Url = BuildYoutubeChannelUri(channelSuffix);
+            existingChannel.ActivityLevel = activityLevel;
+            existingChannel.TitleKeywords = titleKeywords;
             existingChannel.UpdatedAt = DateTimeOffset.UtcNow;
 
             await _channelRepository.SaveChangesAsync(cancellationToken);
-            return MapToDetailResponse(existingChannel);
+            return existingChannel;
         }
 
         public async Task<CreateYoutubeChannelResult> CreateAsync(
-            CreateYoutubeChannelRequest request,
+            string channelSuffix,
+            ChannelActivityLevel activityLevel,
+            string? channelTitle,
+            string? titleKeywords,
             CancellationToken cancellationToken)
         {
             try
             {
                 var searchResults = await _youtubeMetadataClient.SearchChannelsAsync(
-                    request.ChannelSuffix,
+                    channelSuffix,
                     cancellationToken);
                 if (searchResults.Count == 0)
                 {
@@ -75,7 +76,7 @@ namespace ContentAggregator.Application.Services.Youtube
                 YoutubeChannelSearchMatch match;
                 if (searchResults.Count > 1)
                 {
-                    if (string.IsNullOrWhiteSpace(request.ChannelTitle))
+                    if (string.IsNullOrWhiteSpace(channelTitle))
                     {
                         return new CreateYoutubeChannelResult(
                             null,
@@ -83,9 +84,9 @@ namespace ContentAggregator.Application.Services.Youtube
                     }
 
                     match = searchResults.SingleOrDefault(x =>
-                               string.Equals(x.Title, request.ChannelTitle, StringComparison.Ordinal))
+                               string.Equals(x.Title, channelTitle, StringComparison.Ordinal))
                            ?? throw new InvalidOperationException(
-                               $"No channel matched the provided channelTitle '{request.ChannelTitle}'.");
+                               $"No channel matched the provided channelTitle '{channelTitle}'.");
                 }
                 else
                 {
@@ -101,14 +102,14 @@ namespace ContentAggregator.Application.Services.Youtube
                 {
                     Name = match.Title,
                     Id = match.ChannelId,
-                    Url = BuildYoutubeChannelUri(request.ChannelSuffix),
-                    ActivityLevel = request.ActivityLevel,
-                    TitleKeywords = request.TitleKeywords
+                    Url = BuildYoutubeChannelUri(channelSuffix),
+                    ActivityLevel = activityLevel,
+                    TitleKeywords = titleKeywords
                 };
 
                 await _channelRepository.AddChannelAsync(channel, cancellationToken);
                 await _channelRepository.SaveChangesAsync(cancellationToken);
-                return new CreateYoutubeChannelResult(MapToDetailResponse(channel), null);
+                return new CreateYoutubeChannelResult(channel, null);
             }
             catch (Exception ex)
             {
@@ -129,20 +130,21 @@ namespace ContentAggregator.Application.Services.Youtube
         }
 
         public async Task<CreateYoutubeVideoResult> CreateVideoAsync(
-            CreateYoutubeVideoRequest request,
+            Uri videoUrl,
+            string? channelSuffix,
             CancellationToken cancellationToken)
         {
-            var videoId = GetVideoId(request.VideoUrl);
+            var videoId = GetVideoId(videoUrl);
             if (string.IsNullOrWhiteSpace(videoId))
             {
-                return new CreateYoutubeVideoResult(null, false, "Invalid YouTube video URL.");
+                return new CreateYoutubeVideoResult(null, null, false, "Invalid YouTube video URL.");
             }
 
             YTChannel? channel = null;
 
-            if (!string.IsNullOrWhiteSpace(request.ChannelSuffix))
+            if (!string.IsNullOrWhiteSpace(channelSuffix))
             {
-                var channelUrl = BuildYoutubeChannelUri(request.ChannelSuffix);
+                var channelUrl = BuildYoutubeChannelUri(channelSuffix);
                 var existingChannel = await _channelRepository.GetChannelByUrlAsync(channelUrl, cancellationToken);
                 if (existingChannel != null)
                 {
@@ -155,14 +157,14 @@ namespace ContentAggregator.Application.Services.Youtube
                 var video = await _youtubeMetadataClient.GetVideoAsync(videoId, cancellationToken);
                 if (video == null)
                 {
-                    return new CreateYoutubeVideoResult(null, true, "Video not found on YouTube.");
+                    return new CreateYoutubeVideoResult(null, null, true, "Video not found on YouTube.");
                 }
 
                 if (channel == null)
                 {
                     var resolvedChannelSuffix = await ResolveChannelSuffixAsync(
                         video.ChannelId,
-                        request.ChannelSuffix,
+                        channelSuffix,
                         cancellationToken);
                     channel = new YTChannel
                     {
@@ -188,13 +190,14 @@ namespace ContentAggregator.Application.Services.Youtube
                 await _channelRepository.SaveChangesAsync(cancellationToken);
 
                 return new CreateYoutubeVideoResult(
-                    MapToVideoResponse(youtubeContent, channel),
+                    youtubeContent,
+                    channel,
                     false,
                     null);
             }
             catch (Exception ex)
             {
-                return new CreateYoutubeVideoResult(null, false, ex.Message);
+                return new CreateYoutubeVideoResult(null, null, false, ex.Message);
             }
         }
 
@@ -218,59 +221,6 @@ namespace ContentAggregator.Application.Services.Youtube
         {
             var safeSuffix = string.IsNullOrWhiteSpace(suffix) ? string.Empty : suffix.TrimStart('/');
             return new Uri($"https://www.youtube.com/{safeSuffix}");
-        }
-
-        private static YoutubeChannelListItemResponse MapToListItemResponse(YTChannel channel)
-        {
-            return new YoutubeChannelListItemResponse(
-                channel.Id,
-                channel.Name,
-                channel.Url.ToString(),
-                GetChannelSuffix(channel.Url),
-                channel.ActivityLevel,
-                channel.LastPublishedAt,
-                channel.TitleKeywords,
-                channel.CreatedAt,
-                channel.UpdatedAt);
-        }
-
-        private static YoutubeChannelDetailResponse MapToDetailResponse(YTChannel channel)
-        {
-            return new YoutubeChannelDetailResponse(
-                channel.Id,
-                channel.Name,
-                channel.Description,
-                channel.Url.ToString(),
-                GetChannelSuffix(channel.Url),
-                channel.ActivityLevel,
-                channel.LastPublishedAt,
-                channel.TitleKeywords,
-                channel.CreatedAt,
-                channel.UpdatedAt);
-        }
-
-        private static YoutubeVideoResponse MapToVideoResponse(YoutubeContent content, YTChannel channel)
-        {
-            return new YoutubeVideoResponse(
-                content.Id,
-                content.VideoId,
-                content.VideoTitle,
-                $"https://www.youtube.com/watch?v={content.VideoId}",
-                content.VideoLength,
-                content.VideoPublishedAt,
-                content.CreatedAt,
-                channel.Id,
-                channel.Name,
-                channel.Url.ToString(),
-                GetChannelSuffix(channel.Url),
-                channel.ActivityLevel);
-        }
-
-        private static string GetChannelSuffix(Uri url)
-        {
-            return url.IsAbsoluteUri
-                ? url.AbsolutePath.Trim('/')
-                : url.OriginalString.Trim('/');
         }
 
         private static string? GetVideoId(Uri videoUrl)

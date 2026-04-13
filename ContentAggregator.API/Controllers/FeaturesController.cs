@@ -1,5 +1,6 @@
-﻿using ContentAggregator.Application.Interfaces;
-using ContentAggregator.Application.Models.Features;
+﻿using ContentAggregator.API.Contracts.Features;
+using ContentAggregator.Application.Interfaces;
+using ContentAggregator.Core.Entities;
 using Microsoft.AspNetCore.Mvc;
 
 namespace ContentAggregator.API.Controllers
@@ -17,11 +18,11 @@ namespace ContentAggregator.API.Controllers
 
         // GET: api/Features
         [HttpGet]
-        public async Task<ActionResult<IReadOnlyList<FeatureListItemResponse>>> GetFeatures(CancellationToken cancellationToken)
+        public async Task<ActionResult<IReadOnlyList<FeatureResponse>>> GetFeatures(CancellationToken cancellationToken)
         {
             var result = await _featureService.GetAllAsync(cancellationToken);
 
-            return Ok(result);
+            return Ok(result.Select(MapToResponse).ToList());
         }
 
         // GET: api/Features/5
@@ -35,7 +36,7 @@ namespace ContentAggregator.API.Controllers
                 return NotFound();
             }
 
-            return Ok(feature);
+            return Ok(MapToResponse(feature));
         }
 
         // PUT: api/Features/5
@@ -44,10 +45,16 @@ namespace ContentAggregator.API.Controllers
         public async Task<ActionResult<FeatureResponse>> PutFeature(
             int id,
             [FromHeader(Name = "Prefer")] string? preferHeader,
-            [FromBody] UpdateFeatureRequest feature,
+            [FromBody] FeatureRequest request,
             CancellationToken cancellationToken)
         {
-            var existingFeature = await _featureService.UpdateAsync(id, feature, cancellationToken);
+            var existingFeature = await _featureService.UpdateAsync(
+                id,
+                request.FirstNameEng,
+                request.LastNameEng,
+                request.FirstNameGeo,
+                request.LastNameGeo,
+                cancellationToken);
             if (existingFeature == null)
             {
                 return NotFound();
@@ -55,7 +62,7 @@ namespace ContentAggregator.API.Controllers
 
             bool wantsMinimalResponse = preferHeader?.Contains("return=minimal") ?? false;
 
-            return wantsMinimalResponse ? NoContent() : Ok(existingFeature);
+            return wantsMinimalResponse ? NoContent() : Ok(MapToResponse(existingFeature));
         }
 
         // POST: api/Features
@@ -65,16 +72,22 @@ namespace ContentAggregator.API.Controllers
         //[ValidateModelFilter]
         public async Task<ActionResult<FeatureResponse>> PostFeature(
             [FromHeader(Name = "Prefer")] string? preferHeader,
-            [FromBody] CreateFeatureRequest request,
+            [FromBody] FeatureRequest request,
             CancellationToken cancellationToken)
         {
-            var feature = await _featureService.CreateAsync(request, cancellationToken);
+            var feature = await _featureService.CreateAsync(
+                request.FirstNameEng,
+                request.LastNameEng,
+                request.FirstNameGeo,
+                request.LastNameGeo,
+                cancellationToken);
 
             bool wantsMinimalResponse = preferHeader?.Contains("return=minimal") ?? false;
+            var response = MapToResponse(feature);
 
             return wantsMinimalResponse
                 ? NoContent()
-                : CreatedAtAction(nameof(GetFeature), new { id = feature.Id }, feature);
+                : CreatedAtAction(nameof(GetFeature), new { id = response.Id }, response);
         }
 
         // DELETE: api/Features/5
@@ -88,6 +101,18 @@ namespace ContentAggregator.API.Controllers
             }
 
             return NoContent();
+        }
+
+        private static FeatureResponse MapToResponse(Feature feature)
+        {
+            return new FeatureResponse(
+                feature.Id,
+                feature.FirstNameEng,
+                feature.LastNameEng,
+                feature.FirstNameGeo,
+                feature.LastNameGeo,
+                feature.CreatedAt,
+                feature.UpdatedAt);
         }
     }
 }

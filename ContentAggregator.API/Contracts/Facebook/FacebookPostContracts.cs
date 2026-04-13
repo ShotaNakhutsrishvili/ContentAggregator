@@ -1,4 +1,4 @@
-namespace ContentAggregator.Application.Models.Facebook
+namespace ContentAggregator.API.Contracts.Facebook
 {
     public sealed record PublishFacebookPostRequest
     {
@@ -6,4 +6,10 @@ namespace ContentAggregator.Application.Models.Facebook
         public Uri? Url { get; init; }
         public string? CustomText { get; init; }
     }
+
+    public sealed record FacebookPostResponse(
+        string Message,
+        string? PostId,
+        string PageId,
+        string? Url);
 }

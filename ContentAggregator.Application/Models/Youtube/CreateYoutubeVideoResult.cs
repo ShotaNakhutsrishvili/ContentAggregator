@@ -1,10 +1,13 @@
+using ContentAggregator.Core.Entities;
+
 namespace ContentAggregator.Application.Models.Youtube
 {
     public sealed record CreateYoutubeVideoResult(
-        YoutubeVideoResponse? Video,
+        YoutubeContent? Video,
+        YTChannel? Channel,
         bool NotFound,
         string? ErrorMessage)
     {
-        public bool Success => Video != null;
+        public bool Success => Video != null && Channel != null;
     }
 }

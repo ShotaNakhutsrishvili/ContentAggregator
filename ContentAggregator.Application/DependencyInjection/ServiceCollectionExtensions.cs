@@ -15,7 +15,6 @@ namespace ContentAggregator.Application.DependencyInjection
         public static IServiceCollection AddApplicationServices(this IServiceCollection services)
         {
             services.AddScoped<IFeatureService, FeatureService>();
-            services.AddScoped<IFacebookPostService, FacebookPostService>();
             services.AddScoped<IFacebookPublishingWorkflow, FacebookPublishingWorkflow>();
             services.AddScoped<ISubtitleWorkflow, SubtitleWorkflow>();
             services.AddScoped<ISummarizationWorkflow, SummarizationWorkflow>();

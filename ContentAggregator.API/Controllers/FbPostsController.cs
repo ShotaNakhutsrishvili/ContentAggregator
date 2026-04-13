@@ -1,5 +1,5 @@
-﻿using ContentAggregator.Application.Interfaces;
-using ContentAggregator.Application.Models.Facebook;
+﻿using ContentAggregator.API.Contracts.Facebook;
+using ContentAggregator.Application.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 
 namespace ContentAggregator.API.Controllers
@@ -8,11 +8,11 @@ namespace ContentAggregator.API.Controllers
     [ApiController]
     public class FbPostsController : ControllerBase
     {
-        private readonly IFacebookPostService _facebookPostService;
+        private readonly IFacebookPublisher _facebookPublisher;
 
-        public FbPostsController(IFacebookPostService facebookPostService)
+        public FbPostsController(IFacebookPublisher facebookPublisher)
         {
-            _facebookPostService = facebookPostService;
+            _facebookPublisher = facebookPublisher;
         }
 
         [HttpPost]
@@ -20,13 +20,31 @@ namespace ContentAggregator.API.Controllers
             [FromBody] PublishFacebookPostRequest request,
             CancellationToken cancellationToken)
         {
-            var result = await _facebookPostService.SharePostAsync(request, cancellationToken);
-            if (!result.Success)
+            if (string.IsNullOrWhiteSpace(request.PageId))
             {
-                return BadRequest(result.ErrorMessage);
+                return BadRequest("PageId is required.");
             }
 
-            return Ok(result.Post);
+            if (request.Url == null && string.IsNullOrWhiteSpace(request.CustomText))
+            {
+                return BadRequest("Either url or customText must be provided.");
+            }
+
+            var result = await _facebookPublisher.SharePostAsync(
+                request.PageId,
+                request.Url?.ToString(),
+                request.CustomText,
+                cancellationToken);
+            if (!result.Success)
+            {
+                return BadRequest(result.Message);
+            }
+
+            return Ok(new FacebookPostResponse(
+                result.Message,
+                result.PostId,
+                request.PageId,
+                request.Url?.ToString()));
         }
     }
 }

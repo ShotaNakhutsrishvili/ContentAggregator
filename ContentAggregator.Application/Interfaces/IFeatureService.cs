@@ -1,13 +1,24 @@
-using ContentAggregator.Application.Models.Features;
+using ContentAggregator.Core.Entities;
 
 namespace ContentAggregator.Application.Interfaces
 {
     public interface IFeatureService
     {
-        Task<IReadOnlyList<FeatureListItemResponse>> GetAllAsync(CancellationToken cancellationToken);
-        Task<FeatureResponse?> GetByIdAsync(int id, CancellationToken cancellationToken);
-        Task<FeatureResponse?> UpdateAsync(int id, UpdateFeatureRequest feature, CancellationToken cancellationToken);
-        Task<FeatureResponse> CreateAsync(CreateFeatureRequest feature, CancellationToken cancellationToken);
+        Task<IReadOnlyList<Feature>> GetAllAsync(CancellationToken cancellationToken);
+        Task<Feature?> GetByIdAsync(int id, CancellationToken cancellationToken);
+        Task<Feature?> UpdateAsync(
+            int id,
+            string firstNameEng,
+            string lastNameEng,
+            string firstNameGeo,
+            string lastNameGeo,
+            CancellationToken cancellationToken);
+        Task<Feature> CreateAsync(
+            string firstNameEng,
+            string lastNameEng,
+            string firstNameGeo,
+            string lastNameGeo,
+            CancellationToken cancellationToken);
         Task<bool> DeleteAsync(int id, CancellationToken cancellationToken);
     }
 }

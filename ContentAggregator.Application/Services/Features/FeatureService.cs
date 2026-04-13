@@ -1,5 +1,4 @@
 using ContentAggregator.Application.Interfaces;
-using ContentAggregator.Application.Models.Features;
 using ContentAggregator.Core.Entities;
 
 namespace ContentAggregator.Application.Services.Features
@@ -13,21 +12,23 @@ namespace ContentAggregator.Application.Services.Features
             _featureRepository = featureRepository;
         }
 
-        public async Task<IReadOnlyList<FeatureListItemResponse>> GetAllAsync(CancellationToken cancellationToken)
+        public async Task<IReadOnlyList<Feature>> GetAllAsync(CancellationToken cancellationToken)
         {
-            var features = await _featureRepository.GetAllFeaturesAsync(cancellationToken);
-            return features
-                .Select(MapToListItemResponse)
-                .ToList();
+            return await _featureRepository.GetAllFeaturesAsync(cancellationToken);
         }
 
-        public async Task<FeatureResponse?> GetByIdAsync(int id, CancellationToken cancellationToken)
+        public async Task<Feature?> GetByIdAsync(int id, CancellationToken cancellationToken)
         {
-            var feature = await _featureRepository.GetFeatureByIdAsync(id, cancellationToken);
-            return feature == null ? null : MapToResponse(feature);
+            return await _featureRepository.GetFeatureByIdAsync(id, cancellationToken);
         }
 
-        public async Task<FeatureResponse?> UpdateAsync(int id, UpdateFeatureRequest feature, CancellationToken cancellationToken)
+        public async Task<Feature?> UpdateAsync(
+            int id,
+            string firstNameEng,
+            string lastNameEng,
+            string firstNameGeo,
+            string lastNameGeo,
+            CancellationToken cancellationToken)
         {
             var existingFeature = await _featureRepository.GetFeatureByIdAsync(id, cancellationToken);
             if (existingFeature == null)
@@ -35,29 +36,34 @@ namespace ContentAggregator.Application.Services.Features
                 return null;
             }
 
-            existingFeature.FirstNameEng = feature.FirstNameEng;
-            existingFeature.LastNameEng = feature.LastNameEng;
-            existingFeature.FirstNameGeo = feature.FirstNameGeo;
-            existingFeature.LastNameGeo = feature.LastNameGeo;
+            existingFeature.FirstNameEng = firstNameEng;
+            existingFeature.LastNameEng = lastNameEng;
+            existingFeature.FirstNameGeo = firstNameGeo;
+            existingFeature.LastNameGeo = lastNameGeo;
             existingFeature.UpdatedAt = DateTimeOffset.UtcNow;
 
             await _featureRepository.SaveChangesAsync(cancellationToken);
-            return MapToResponse(existingFeature);
+            return existingFeature;
         }
 
-        public async Task<FeatureResponse> CreateAsync(CreateFeatureRequest feature, CancellationToken cancellationToken)
+        public async Task<Feature> CreateAsync(
+            string firstNameEng,
+            string lastNameEng,
+            string firstNameGeo,
+            string lastNameGeo,
+            CancellationToken cancellationToken)
         {
             var featureEntity = new Feature
             {
-                FirstNameEng = feature.FirstNameEng,
-                LastNameEng = feature.LastNameEng,
-                FirstNameGeo = feature.FirstNameGeo,
-                LastNameGeo = feature.LastNameGeo
+                FirstNameEng = firstNameEng,
+                LastNameEng = lastNameEng,
+                FirstNameGeo = firstNameGeo,
+                LastNameGeo = lastNameGeo
             };
 
             await _featureRepository.AddFeatureAsync(featureEntity, cancellationToken);
             await _featureRepository.SaveChangesAsync(cancellationToken);
-            return MapToResponse(featureEntity);
+            return featureEntity;
         }
 
         public async Task<bool> DeleteAsync(int id, CancellationToken cancellationToken)
@@ -70,30 +76,6 @@ namespace ContentAggregator.Application.Services.Features
 
             await _featureRepository.SaveChangesAsync(cancellationToken);
             return true;
-        }
-
-        private static FeatureListItemResponse MapToListItemResponse(Feature feature)
-        {
-            return new FeatureListItemResponse(
-                feature.Id,
-                feature.FirstNameEng,
-                feature.LastNameEng,
-                feature.FirstNameGeo,
-                feature.LastNameGeo,
-                feature.CreatedAt,
-                feature.UpdatedAt);
-        }
-
-        private static FeatureResponse MapToResponse(Feature feature)
-        {
-            return new FeatureResponse(
-                feature.Id,
-                feature.FirstNameEng,
-                feature.LastNameEng,
-                feature.FirstNameGeo,
-                feature.LastNameGeo,
-                feature.CreatedAt,
-                feature.UpdatedAt);
         }
     }
 }
