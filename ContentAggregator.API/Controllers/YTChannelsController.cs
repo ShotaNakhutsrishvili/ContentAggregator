@@ -1,5 +1,6 @@
 ﻿using ContentAggregator.API.Contracts.Youtube;
 using ContentAggregator.Application.Interfaces;
+using ContentAggregator.Application.Models.Youtube;
 using ContentAggregator.Core.Entities;
 using Microsoft.AspNetCore.Mvc;
 
@@ -47,10 +48,7 @@ namespace ContentAggregator.API.Controllers
         {
             var existingChannel = await _youtubeChannelService.UpdateAsync(
                 id,
-                request.ChannelSuffix,
-                request.ActivityLevel,
-                request.ChannelTitle,
-                request.TitleKeywords,
+                MapToWriteModel(request),
                 cancellationToken);
             if (existingChannel == null)
             {
@@ -67,10 +65,7 @@ namespace ContentAggregator.API.Controllers
             CancellationToken cancellationToken)
         {
             var result = await _youtubeChannelService.CreateAsync(
-                request.ChannelSuffix,
-                request.ActivityLevel,
-                request.ChannelTitle,
-                request.TitleKeywords,
+                MapToWriteModel(request),
                 cancellationToken);
             if (!result.Success)
             {
@@ -99,8 +94,7 @@ namespace ContentAggregator.API.Controllers
             CancellationToken cancellationToken)
         {
             var result = await _youtubeChannelService.CreateVideoAsync(
-                request.VideoUrl,
-                request.ChannelSuffix,
+                new CreateYoutubeVideoInput(request.VideoUrl, request.ChannelSuffix),
                 cancellationToken);
             if (result.NotFound)
             {
@@ -148,6 +142,15 @@ namespace ContentAggregator.API.Controllers
                 channel.Url.ToString(),
                 GetChannelSuffix(channel.Url),
                 channel.ActivityLevel);
+        }
+
+        private static YoutubeChannelWriteModel MapToWriteModel(YoutubeChannelRequest request)
+        {
+            return new YoutubeChannelWriteModel(
+                request.ChannelSuffix,
+                request.ActivityLevel,
+                request.ChannelTitle,
+                request.TitleKeywords);
         }
 
         private static string GetChannelSuffix(Uri url)

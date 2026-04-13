@@ -1,3 +1,4 @@
+using ContentAggregator.Application.Models.Features;
 using ContentAggregator.Core.Entities;
 
 namespace ContentAggregator.Application.Interfaces
@@ -8,16 +9,10 @@ namespace ContentAggregator.Application.Interfaces
         Task<Feature?> GetByIdAsync(int id, CancellationToken cancellationToken);
         Task<Feature?> UpdateAsync(
             int id,
-            string firstNameEng,
-            string lastNameEng,
-            string firstNameGeo,
-            string lastNameGeo,
+            FeatureWriteModel model,
             CancellationToken cancellationToken);
         Task<Feature> CreateAsync(
-            string firstNameEng,
-            string lastNameEng,
-            string firstNameGeo,
-            string lastNameGeo,
+            FeatureWriteModel model,
             CancellationToken cancellationToken);
         Task<bool> DeleteAsync(int id, CancellationToken cancellationToken);
     }

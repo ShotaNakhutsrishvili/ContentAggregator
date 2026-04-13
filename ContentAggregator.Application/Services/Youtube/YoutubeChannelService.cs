@@ -30,10 +30,7 @@ namespace ContentAggregator.Application.Services.Youtube
 
         public async Task<YTChannel?> UpdateAsync(
             string id,
-            string channelSuffix,
-            ChannelActivityLevel activityLevel,
-            string? channelTitle,
-            string? titleKeywords,
+            YoutubeChannelWriteModel model,
             CancellationToken cancellationToken)
         {
             var existingChannel = await _channelRepository.GetChannelByIdAsync(id, cancellationToken);
@@ -42,12 +39,12 @@ namespace ContentAggregator.Application.Services.Youtube
                 return null;
             }
 
-            existingChannel.Name = string.IsNullOrWhiteSpace(channelTitle)
+            existingChannel.Name = string.IsNullOrWhiteSpace(model.ChannelTitle)
                 ? existingChannel.Name
-                : channelTitle;
-            existingChannel.Url = BuildYoutubeChannelUri(channelSuffix);
-            existingChannel.ActivityLevel = activityLevel;
-            existingChannel.TitleKeywords = titleKeywords;
+                : model.ChannelTitle;
+            existingChannel.Url = BuildYoutubeChannelUri(model.ChannelSuffix);
+            existingChannel.ActivityLevel = model.ActivityLevel;
+            existingChannel.TitleKeywords = model.TitleKeywords;
             existingChannel.UpdatedAt = DateTimeOffset.UtcNow;
 
             await _channelRepository.SaveChangesAsync(cancellationToken);
@@ -55,16 +52,13 @@ namespace ContentAggregator.Application.Services.Youtube
         }
 
         public async Task<CreateYoutubeChannelResult> CreateAsync(
-            string channelSuffix,
-            ChannelActivityLevel activityLevel,
-            string? channelTitle,
-            string? titleKeywords,
+            YoutubeChannelWriteModel model,
             CancellationToken cancellationToken)
         {
             try
             {
                 var searchResults = await _youtubeMetadataClient.SearchChannelsAsync(
-                    channelSuffix,
+                    model.ChannelSuffix,
                     cancellationToken);
                 if (searchResults.Count == 0)
                 {
@@ -76,7 +70,7 @@ namespace ContentAggregator.Application.Services.Youtube
                 YoutubeChannelSearchMatch match;
                 if (searchResults.Count > 1)
                 {
-                    if (string.IsNullOrWhiteSpace(channelTitle))
+                    if (string.IsNullOrWhiteSpace(model.ChannelTitle))
                     {
                         return new CreateYoutubeChannelResult(
                             null,
@@ -84,9 +78,9 @@ namespace ContentAggregator.Application.Services.Youtube
                     }
 
                     match = searchResults.SingleOrDefault(x =>
-                               string.Equals(x.Title, channelTitle, StringComparison.Ordinal))
+                               string.Equals(x.Title, model.ChannelTitle, StringComparison.Ordinal))
                            ?? throw new InvalidOperationException(
-                               $"No channel matched the provided channelTitle '{channelTitle}'.");
+                               $"No channel matched the provided channelTitle '{model.ChannelTitle}'.");
                 }
                 else
                 {
@@ -102,9 +96,9 @@ namespace ContentAggregator.Application.Services.Youtube
                 {
                     Name = match.Title,
                     Id = match.ChannelId,
-                    Url = BuildYoutubeChannelUri(channelSuffix),
-                    ActivityLevel = activityLevel,
-                    TitleKeywords = titleKeywords
+                    Url = BuildYoutubeChannelUri(model.ChannelSuffix),
+                    ActivityLevel = model.ActivityLevel,
+                    TitleKeywords = model.TitleKeywords
                 };
 
                 await _channelRepository.AddChannelAsync(channel, cancellationToken);
@@ -130,11 +124,10 @@ namespace ContentAggregator.Application.Services.Youtube
         }
 
         public async Task<CreateYoutubeVideoResult> CreateVideoAsync(
-            Uri videoUrl,
-            string? channelSuffix,
+            CreateYoutubeVideoInput input,
             CancellationToken cancellationToken)
         {
-            var videoId = GetVideoId(videoUrl);
+            var videoId = GetVideoId(input.VideoUrl);
             if (string.IsNullOrWhiteSpace(videoId))
             {
                 return new CreateYoutubeVideoResult(null, null, false, "Invalid YouTube video URL.");
@@ -142,9 +135,9 @@ namespace ContentAggregator.Application.Services.Youtube
 
             YTChannel? channel = null;
 
-            if (!string.IsNullOrWhiteSpace(channelSuffix))
+            if (!string.IsNullOrWhiteSpace(input.ChannelSuffix))
             {
-                var channelUrl = BuildYoutubeChannelUri(channelSuffix);
+                var channelUrl = BuildYoutubeChannelUri(input.ChannelSuffix);
                 var existingChannel = await _channelRepository.GetChannelByUrlAsync(channelUrl, cancellationToken);
                 if (existingChannel != null)
                 {
@@ -164,7 +157,7 @@ namespace ContentAggregator.Application.Services.Youtube
                 {
                     var resolvedChannelSuffix = await ResolveChannelSuffixAsync(
                         video.ChannelId,
-                        channelSuffix,
+                        input.ChannelSuffix,
                         cancellationToken);
                     channel = new YTChannel
                     {

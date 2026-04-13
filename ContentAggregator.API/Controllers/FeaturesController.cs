@@ -1,5 +1,6 @@
 ﻿using ContentAggregator.API.Contracts.Features;
 using ContentAggregator.Application.Interfaces;
+using ContentAggregator.Application.Models.Features;
 using ContentAggregator.Core.Entities;
 using Microsoft.AspNetCore.Mvc;
 
@@ -50,10 +51,7 @@ namespace ContentAggregator.API.Controllers
         {
             var existingFeature = await _featureService.UpdateAsync(
                 id,
-                request.FirstNameEng,
-                request.LastNameEng,
-                request.FirstNameGeo,
-                request.LastNameGeo,
+                MapToWriteModel(request),
                 cancellationToken);
             if (existingFeature == null)
             {
@@ -75,12 +73,7 @@ namespace ContentAggregator.API.Controllers
             [FromBody] FeatureRequest request,
             CancellationToken cancellationToken)
         {
-            var feature = await _featureService.CreateAsync(
-                request.FirstNameEng,
-                request.LastNameEng,
-                request.FirstNameGeo,
-                request.LastNameGeo,
-                cancellationToken);
+            var feature = await _featureService.CreateAsync(MapToWriteModel(request), cancellationToken);
 
             bool wantsMinimalResponse = preferHeader?.Contains("return=minimal") ?? false;
             var response = MapToResponse(feature);
@@ -113,6 +106,15 @@ namespace ContentAggregator.API.Controllers
                 feature.LastNameGeo,
                 feature.CreatedAt,
                 feature.UpdatedAt);
+        }
+
+        private static FeatureWriteModel MapToWriteModel(FeatureRequest request)
+        {
+            return new FeatureWriteModel(
+                request.FirstNameEng,
+                request.LastNameEng,
+                request.FirstNameGeo,
+                request.LastNameGeo);
         }
     }
 }

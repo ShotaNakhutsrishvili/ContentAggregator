@@ -1,4 +1,5 @@
 using ContentAggregator.Application.Interfaces;
+using ContentAggregator.Application.Models.Features;
 using ContentAggregator.Core.Entities;
 
 namespace ContentAggregator.Application.Services.Features
@@ -24,10 +25,7 @@ namespace ContentAggregator.Application.Services.Features
 
         public async Task<Feature?> UpdateAsync(
             int id,
-            string firstNameEng,
-            string lastNameEng,
-            string firstNameGeo,
-            string lastNameGeo,
+            FeatureWriteModel model,
             CancellationToken cancellationToken)
         {
             var existingFeature = await _featureRepository.GetFeatureByIdAsync(id, cancellationToken);
@@ -36,10 +34,10 @@ namespace ContentAggregator.Application.Services.Features
                 return null;
             }
 
-            existingFeature.FirstNameEng = firstNameEng;
-            existingFeature.LastNameEng = lastNameEng;
-            existingFeature.FirstNameGeo = firstNameGeo;
-            existingFeature.LastNameGeo = lastNameGeo;
+            existingFeature.FirstNameEng = model.FirstNameEng;
+            existingFeature.LastNameEng = model.LastNameEng;
+            existingFeature.FirstNameGeo = model.FirstNameGeo;
+            existingFeature.LastNameGeo = model.LastNameGeo;
             existingFeature.UpdatedAt = DateTimeOffset.UtcNow;
 
             await _featureRepository.SaveChangesAsync(cancellationToken);
@@ -47,18 +45,15 @@ namespace ContentAggregator.Application.Services.Features
         }
 
         public async Task<Feature> CreateAsync(
-            string firstNameEng,
-            string lastNameEng,
-            string firstNameGeo,
-            string lastNameGeo,
+            FeatureWriteModel model,
             CancellationToken cancellationToken)
         {
             var featureEntity = new Feature
             {
-                FirstNameEng = firstNameEng,
-                LastNameEng = lastNameEng,
-                FirstNameGeo = firstNameGeo,
-                LastNameGeo = lastNameGeo
+                FirstNameEng = model.FirstNameEng,
+                LastNameEng = model.LastNameEng,
+                FirstNameGeo = model.FirstNameGeo,
+                LastNameGeo = model.LastNameGeo
             };
 
             await _featureRepository.AddFeatureAsync(featureEntity, cancellationToken);
