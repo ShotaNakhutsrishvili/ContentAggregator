@@ -4,6 +4,8 @@ namespace ContentAggregator.Infrastructure.Services.Facebook
     {
         public const string SectionName = "Facebook";
 
+        public bool Enabled { get; set; }
+
         public string AccessToken { get; set; } = string.Empty;
 
         public string PageId { get; set; } = string.Empty;

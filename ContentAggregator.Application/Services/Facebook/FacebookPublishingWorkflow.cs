@@ -22,6 +22,12 @@ namespace ContentAggregator.Application.Services.Facebook
 
         public async Task ProcessOnceAsync(CancellationToken cancellationToken)
         {
+            if (!_facebookPublisher.IsEnabled)
+            {
+                _logger.LogInformation("Skipping Facebook publishing job because publishing is disabled.");
+                return;
+            }
+
             if (!_facebookPublisher.IsConfigured)
             {
                 _logger.LogWarning("Skipping Facebook publishing job because Facebook access token is not configured.");

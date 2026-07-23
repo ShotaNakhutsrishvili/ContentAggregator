@@ -4,6 +4,8 @@ namespace ContentAggregator.Application.Interfaces
 {
     public interface IYoutubeCommentPublisher
     {
+        bool IsEnabled { get; }
+
         bool IsConfigured { get; }
 
         Task<YoutubeCommentPublishResult> PublishAsync(

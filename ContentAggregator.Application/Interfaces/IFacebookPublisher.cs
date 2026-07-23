@@ -4,6 +4,8 @@ namespace ContentAggregator.Application.Interfaces
 {
     public interface IFacebookPublisher
     {
+        bool IsEnabled { get; }
+
         bool IsConfigured { get; }
 
         string? DefaultPageId { get; }

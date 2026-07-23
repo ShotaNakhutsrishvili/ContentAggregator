@@ -22,6 +22,12 @@ namespace ContentAggregator.Application.Services.YoutubeComments
 
         public async Task ProcessOnceAsync(CancellationToken cancellationToken)
         {
+            if (!_youtubeCommentPublisher.IsEnabled)
+            {
+                _logger.LogInformation("Skipping YouTube comment job because publishing is disabled.");
+                return;
+            }
+
             if (!_youtubeCommentPublisher.IsConfigured)
             {
                 _logger.LogWarning("Skipping YouTube comment job because YoutubeComment:OAuthAccessToken is not configured.");

@@ -23,6 +23,8 @@ namespace ContentAggregator.Infrastructure.Services.YoutubeComments
             _options = options.Value;
         }
 
+        public bool IsEnabled => _options.Enabled;
+
         public bool IsConfigured => !string.IsNullOrWhiteSpace(_options.OAuthAccessToken);
 
         public async Task<YoutubeCommentPublishResult> PublishAsync(
@@ -30,6 +32,11 @@ namespace ContentAggregator.Infrastructure.Services.YoutubeComments
             string text,
             CancellationToken cancellationToken)
         {
+            if (!IsEnabled)
+            {
+                return new YoutubeCommentPublishResult(false, "YouTube comment publishing is disabled.", null);
+            }
+
             if (!IsConfigured)
             {
                 return new YoutubeCommentPublishResult(false, "YouTube OAuth access token is not configured.", null);

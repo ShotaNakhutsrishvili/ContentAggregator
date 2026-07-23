@@ -21,6 +21,8 @@ namespace ContentAggregator.Infrastructure.Services.Facebook
             _options = options.Value;
         }
 
+        public bool IsEnabled => _options.Enabled;
+
         public bool IsConfigured => !string.IsNullOrWhiteSpace(_options.AccessToken);
 
         public string? DefaultPageId => _options.PageId;
@@ -31,6 +33,11 @@ namespace ContentAggregator.Infrastructure.Services.Facebook
             string? message,
             CancellationToken cancellationToken = default)
         {
+            if (!IsEnabled)
+            {
+                return new FacebookPublishResult(false, "Facebook publishing is disabled.", null);
+            }
+
             if (postUrl == null && message == null)
             {
                 throw new InvalidOperationException("Either postUrl or message must be provided.");

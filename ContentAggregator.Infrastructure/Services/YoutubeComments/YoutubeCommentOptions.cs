@@ -4,6 +4,8 @@ namespace ContentAggregator.Infrastructure.Services.YoutubeComments
     {
         public const string SectionName = "YoutubeComment";
 
+        public bool Enabled { get; set; }
+
         public string OAuthAccessToken { get; set; } = string.Empty;
     }
 }
