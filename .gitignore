@@ -372,3 +372,6 @@ FodyWeavers.xsd
 
 # Artifacts from Microsoft Agent Framework (my solution)
 .msagent/
+
+# Jetbrains Rider related files
+.idea/
