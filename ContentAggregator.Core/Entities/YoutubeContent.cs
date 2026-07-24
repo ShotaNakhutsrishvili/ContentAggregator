@@ -32,5 +32,7 @@ namespace ContentAggregator.Core.Entities
         public YTChannel? YTChannel { get; set; }
         public ICollection<Feature> Features { get; set; } = [];
         public ICollection<YoutubeContentFeature> YoutubeContentFeatures { get; set; } = [];
+        public ICollection<YoutubeContentRevision> Revisions { get; set; } = [];
+        public YoutubeContentPublication? Publication { get; set; }
     }
 }
