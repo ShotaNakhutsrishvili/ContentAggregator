@@ -19,6 +19,11 @@ namespace ContentAggregator.Core.Entities
             ArgumentOutOfRangeException.ThrowIfNegative(startSeconds);
             ArgumentException.ThrowIfNullOrWhiteSpace(heading);
 
+            if (heading.Length > 300)
+            {
+                throw new ArgumentException("Section heading cannot exceed 300 characters.", nameof(heading));
+            }
+
             if (endSeconds.HasValue && endSeconds.Value <= startSeconds)
             {
                 throw new ArgumentOutOfRangeException(

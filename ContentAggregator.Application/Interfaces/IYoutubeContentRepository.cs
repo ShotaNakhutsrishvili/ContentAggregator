@@ -8,7 +8,7 @@ namespace ContentAggregator.Application.Interfaces
         Task<YoutubeContent?> GetYTContentsByIdAsync(int id, CancellationToken cancellationToken);
         Task<List<YoutubeContent>> GetYTContentsNeedingRefetch(CancellationToken cancellationToken);
         Task<List<YoutubeContent>> GetYTContentsWithoutSubtitles(CancellationToken cancellationToken);
-        Task<List<YoutubeContent>> GetYTContentsWithoutSummaries(CancellationToken cancellationToken);
+        Task<List<YoutubeContent>> GetYTContentsForSummaryGeneration(CancellationToken cancellationToken);
         Task<List<YoutubeContent>> GetYTContentsForFBPost(CancellationToken cancellationToken);
         Task<List<YoutubeContent>> GetYTContentsForYoutubeCommentPost(CancellationToken cancellationToken);
         Task AddYTContentFeature(YoutubeContentFeature contentFeature, CancellationToken cancellationToken);
@@ -17,6 +17,7 @@ namespace ContentAggregator.Application.Interfaces
         Task UpdateYTContentsRangeAsync(List<YoutubeContent> yTContents, CancellationToken cancellationToken);
         Task<bool> DeleteYTContentAsync(int id, CancellationToken cancellationToken);
         Task<PagedYoutubeContentsResult> GetPagedAsync(int page, int pageSize, string? channelId, CancellationToken cancellationToken);
+        Task RecordProcessingErrorAsync(int youtubeContentId, string error, CancellationToken cancellationToken);
         Task SaveChangesAsync(CancellationToken cancellationToken);
     }
 }

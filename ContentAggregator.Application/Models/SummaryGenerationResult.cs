@@ -3,5 +3,7 @@ namespace ContentAggregator.Application.Models
     public sealed record SummaryGenerationResult(
         string Participants,
         string VideoSummary,
-        string YoutubeCommentText);
+        IReadOnlyList<GeneratedContentSection> Sections,
+        string GeneratorModel,
+        string PromptVersion);
 }

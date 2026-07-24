@@ -24,6 +24,10 @@ namespace ContentAggregator.Infrastructure.Services.Summarization
             _options = options.Value;
         }
 
+        public string GeneratorModel => _options.Model;
+
+        public string PromptVersion => SummaryPromptVersion;
+
         public async Task<SummaryGenerationResult> GenerateAsync(
             string filteredTranscript,
             string? originalSrt,
@@ -38,6 +42,11 @@ namespace ContentAggregator.Infrastructure.Services.Summarization
             if (_httpClient.BaseAddress is null)
             {
                 throw new InvalidOperationException($"LM Studio API URL '{_options.BaseUrl}' is invalid.");
+            }
+
+            if (string.IsNullOrWhiteSpace(originalSrt))
+            {
+                throw new InvalidOperationException("A timed SRT transcript is required to generate content sections.");
             }
 
             var request = new CompletionRequest
@@ -74,7 +83,11 @@ namespace ContentAggregator.Infrastructure.Services.Summarization
             }
 
             var llmContent = deserializedResponse.Choices[0].Message.Content;
-            return ParseGeneratedPayload(llmContent);
+            return ParseGeneratedPayload(llmContent) with
+            {
+                GeneratorModel = GeneratorModel,
+                PromptVersion = PromptVersion
+            };
         }
 
         private static string BuildUserPrompt(
@@ -131,7 +144,8 @@ FILTERED_TRANSCRIPT:
 
             var normalized = NormalizePayload(payload);
             return !string.IsNullOrWhiteSpace(normalized.VideoSummary)
-                   && !string.IsNullOrWhiteSpace(normalized.YoutubeCommentText)
+                   && normalized.Sections.Count > 0
+                   && normalized.Sections.All(section => !string.IsNullOrWhiteSpace(section.Heading))
                 ? normalized
                 : null;
         }
@@ -141,12 +155,29 @@ FILTERED_TRANSCRIPT:
             try
             {
                 var payload = JsonSerializer.Deserialize<GeneratedSummaryPayload>(json, SerializerOptions);
-                return payload == null
-                    ? null
-                    : new SummaryGenerationResult(
-                        payload.Participants ?? string.Empty,
-                        payload.VideoSummary ?? string.Empty,
-                        payload.YoutubeCommentText ?? string.Empty);
+                if (payload?.Sections == null
+                    || payload.Sections.Any(section =>
+                        section?.StartSeconds is null
+                        || string.IsNullOrWhiteSpace(section.Heading)
+                        || section.Heading.Length > 300))
+                {
+                    return null;
+                }
+
+                var sections = payload.Sections
+                    .Select(section => new GeneratedContentSection(
+                        section!.StartSeconds!.Value,
+                        section.EndSeconds,
+                        section.Heading!,
+                        section.Summary))
+                    .ToArray();
+
+                return new SummaryGenerationResult(
+                    payload.Participants ?? string.Empty,
+                    payload.VideoSummary ?? string.Empty,
+                    sections,
+                    string.Empty,
+                    string.Empty);
             }
             catch (JsonException)
             {
@@ -160,7 +191,13 @@ FILTERED_TRANSCRIPT:
             {
                 Participants = payload.Participants?.Trim() ?? string.Empty,
                 VideoSummary = payload.VideoSummary?.Trim() ?? string.Empty,
-                YoutubeCommentText = payload.YoutubeCommentText?.Trim() ?? string.Empty
+                Sections = payload.Sections
+                    .Select(section => section with
+                    {
+                        Heading = section.Heading?.Trim() ?? string.Empty,
+                        Summary = section.Summary?.Trim()
+                    })
+                    .ToArray()
             };
         }
 
@@ -241,9 +278,26 @@ FILTERED_TRANSCRIPT:
             [JsonPropertyName("videoSummary")]
             public string? VideoSummary { get; set; }
 
-            [JsonPropertyName("youtubeCommentText")]
-            public string? YoutubeCommentText { get; set; }
+            [JsonPropertyName("sections")]
+            public GeneratedSectionPayload?[]? Sections { get; set; }
         }
+
+        private sealed class GeneratedSectionPayload
+        {
+            [JsonPropertyName("startSeconds")]
+            public int? StartSeconds { get; set; }
+
+            [JsonPropertyName("endSeconds")]
+            public int? EndSeconds { get; set; }
+
+            [JsonPropertyName("heading")]
+            public string? Heading { get; set; }
+
+            [JsonPropertyName("summary")]
+            public string? Summary { get; set; }
+        }
+
+        private const string SummaryPromptVersion = "sections-v1";
 
         private const string SummarizeInstruction = """
 You are given a podcast/interview transcript.
@@ -251,12 +305,23 @@ Return ONLY valid JSON with this schema:
 {
   "participants": "comma-separated last names only (can be empty string)",
   "videoSummary": "short neutral summary in the same language as transcript",
-  "youtubeCommentText": "broad timestamped outline in the same language, format each line like MM:SS - point"
+  "sections": [
+    {
+      "startSeconds": 0,
+      "endSeconds": 120,
+      "heading": "concise section heading in the same language as the transcript",
+      "summary": "optional one-sentence section summary"
+    }
+  ]
 }
 
 Rules:
 - Keep output language the same as transcript language.
-- Use around 10 broad timestamp lines in youtubeCommentText. If the subjects change a lot, then use more.
+- Use TIMED_SRT as the source of section timestamps.
+- Use around 10 broad subject-based sections. Use more only when the subject changes materially.
+- Return integer seconds for timestamps.
+- Sections must be ordered, non-overlapping, and within the video timeline.
+- The first section should normally start at 0.
 - Do not include markdown fences.
 """;
     }

@@ -2,6 +2,9 @@ using ContentAggregator.Application.Interfaces;
 using ContentAggregator.Application.Models;
 using ContentAggregator.Core.Entities;
 using Microsoft.Extensions.Logging;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 
 namespace ContentAggregator.Application.Services.Summarization
 {
@@ -30,14 +33,17 @@ namespace ContentAggregator.Application.Services.Summarization
             {
                 _logger.LogInformation("{Now}: Starting summarization pass.", DateTimeOffset.UtcNow);
 
-                var youtubeContents = await _youtubeContentRepository.GetYTContentsWithoutSummaries(cancellationToken);
+                var youtubeContents = await _youtubeContentRepository.GetYTContentsForSummaryGeneration(cancellationToken);
 
                 foreach (var content in youtubeContents)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
 
-                    if (!string.IsNullOrWhiteSpace(content.VideoSummary)
-                        && !string.IsNullOrWhiteSpace(content.YoutubeCommentText))
+                    var transcriptChecksum = CreateGenerationInputChecksum(content);
+                    if (content.Revisions.Any(revision =>
+                            revision.TranscriptChecksum == transcriptChecksum
+                            && revision.GeneratorModel == _summaryGenerator.GeneratorModel
+                            && revision.PromptVersion == _summaryGenerator.PromptVersion))
                     {
                         continue;
                     }
@@ -55,11 +61,22 @@ namespace ContentAggregator.Application.Services.Summarization
                             content.SubtitleLanguage,
                             cancellationToken);
 
-                        content.VideoSummary = generated.VideoSummary;
-                        content.YoutubeCommentText = generated.YoutubeCommentText;
-                        content.LastProcessingError = null;
+                        var revision = CreateRevision(content, generated, transcriptChecksum);
 
                         await AddParticipantLinksAsync(generated, content, cancellationToken);
+
+                        content.Revisions.Add(revision);
+                        if (string.IsNullOrWhiteSpace(content.VideoSummary))
+                        {
+                            content.VideoSummary = revision.Summary;
+                        }
+
+                        if (string.IsNullOrWhiteSpace(content.YoutubeCommentText))
+                        {
+                            content.YoutubeCommentText = YoutubeCommentOutlineRenderer.Render(revision.Sections);
+                        }
+
+                        content.LastProcessingError = null;
 
                         await _youtubeContentRepository.UpdateYTContentsAsync(content, cancellationToken);
                         await _youtubeContentRepository.SaveChangesAsync(cancellationToken);
@@ -74,9 +91,10 @@ namespace ContentAggregator.Application.Services.Summarization
                     }
                     catch (Exception ex)
                     {
-                        content.LastProcessingError = ex.Message;
-                        await _youtubeContentRepository.UpdateYTContentsAsync(content, cancellationToken);
-                        await _youtubeContentRepository.SaveChangesAsync(cancellationToken);
+                        await _youtubeContentRepository.RecordProcessingErrorAsync(
+                            content.Id,
+                            ex.Message,
+                            cancellationToken);
                         _logger.LogWarning(ex, "Failed to summarize youtube content ID {ContentId}.", content.Id);
                     }
                 }
@@ -90,6 +108,52 @@ namespace ContentAggregator.Application.Services.Summarization
             {
                 _logger.LogWarning(ex, "{Workflow} threw an exception.", nameof(SummarizationWorkflow));
             }
+        }
+
+        private static YoutubeContentRevision CreateRevision(
+            YoutubeContent content,
+            SummaryGenerationResult generated,
+            string transcriptChecksum)
+        {
+            var nextVersion = content.Revisions.Count == 0
+                ? 1
+                : content.Revisions.Max(revision => revision.Version) + 1;
+
+            var revision = new YoutubeContentRevision(
+                content.Id,
+                nextVersion,
+                content.SubtitleLanguage,
+                generated.VideoSummary,
+                transcriptChecksum,
+                generated.GeneratorModel,
+                generated.PromptVersion);
+
+            foreach (var section in generated.Sections)
+            {
+                revision.AddSection(
+                    section.StartSeconds,
+                    section.EndSeconds,
+                    section.Heading,
+                    section.Summary,
+                    ContentSectionSource.Machine,
+                    confidence: null);
+            }
+
+            revision.MarkReadyForReview(content.VideoLength);
+            return revision;
+        }
+
+        private static string CreateGenerationInputChecksum(YoutubeContent content)
+        {
+            var generationInput = JsonSerializer.Serialize(new
+            {
+                Schema = "summary-sections-input-v1",
+                Language = (byte)content.SubtitleLanguage,
+                TimedSrt = content.SubtitlesOrigSRT,
+                FilteredTranscript = content.SubtitlesFiltered
+            });
+
+            return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(generationInput)));
         }
 
         private async Task AddParticipantLinksAsync(
@@ -131,11 +195,16 @@ namespace ContentAggregator.Application.Services.Summarization
                         continue;
                     }
 
-                    youtubeContent.YoutubeContentFeatures.Add(new YoutubeContentFeature
+                    var contentFeature = new YoutubeContentFeature
                     {
                         YoutubeContentId = youtubeContent.Id,
                         FeatureId = featureId
-                    });
+                    };
+
+                    await _youtubeContentRepository.AddYTContentFeature(
+                        contentFeature,
+                        cancellationToken);
+                    youtubeContent.YoutubeContentFeatures.Add(contentFeature);
                 }
             }
         }

@@ -34,27 +34,40 @@ namespace ContentAggregator.Infrastructure.Repositories
                 .ToListAsync(cancellationToken);
         }
 
-        public async Task<List<YoutubeContent>> GetYTContentsWithoutSummaries(CancellationToken cancellationToken)
+        public async Task<List<YoutubeContent>> GetYTContentsForSummaryGeneration(CancellationToken cancellationToken)
         {
             return await _context.YoutubeContents
                 .Include(x => x.YoutubeContentFeatures)
-                .Where(x => x.SubtitlesFiltered != null
-                            && (string.IsNullOrEmpty(x.VideoSummary)
-                                || string.IsNullOrEmpty(x.YoutubeCommentText)))
+                .Include(x => x.Revisions)
+                .Where(x => !string.IsNullOrEmpty(x.SubtitlesFiltered)
+                            && !string.IsNullOrEmpty(x.SubtitlesOrigSRT))
                 .ToListAsync(cancellationToken);
         }
 
         public async Task<List<YoutubeContent>> GetYTContentsForFBPost(CancellationToken cancellationToken)
         {
             return await _context.YoutubeContents
-                .Where(x => !string.IsNullOrEmpty(x.VideoSummary) && !x.FbPosted)
+                .Include(x => x.Publication)
+                    .ThenInclude(x => x!.PublishedRevision)
+                .Where(x => x.Publication != null
+                            && x.Publication.State == SitePublicationState.Published
+                            && x.Publication.PublishedRevision != null
+                            && x.Publication.PublishedRevision.ReviewState == EditorialReviewState.Approved
+                            && !x.FbPosted)
                 .ToListAsync(cancellationToken);
         }
 
         public async Task<List<YoutubeContent>> GetYTContentsForYoutubeCommentPost(CancellationToken cancellationToken)
         {
             return await _context.YoutubeContents
-                .Where(x => !string.IsNullOrEmpty(x.YoutubeCommentText) && !x.YoutubeCommentPosted)
+                .Include(x => x.Publication)
+                    .ThenInclude(x => x!.PublishedRevision)
+                        .ThenInclude(x => x!.Sections)
+                .Where(x => x.Publication != null
+                            && x.Publication.State == SitePublicationState.Published
+                            && x.Publication.PublishedRevision != null
+                            && x.Publication.PublishedRevision.ReviewState == EditorialReviewState.Approved
+                            && !x.YoutubeCommentPosted)
                 .ToListAsync(cancellationToken);
         }
 
@@ -162,6 +175,22 @@ namespace ContentAggregator.Infrastructure.Repositories
         public async Task SaveChangesAsync(CancellationToken cancellationToken)
         {
             await _context.SaveChangesAsync(cancellationToken);
+        }
+
+        public async Task RecordProcessingErrorAsync(
+            int youtubeContentId,
+            string error,
+            CancellationToken cancellationToken)
+        {
+            _context.ChangeTracker.Clear();
+
+            await _context.YoutubeContents
+                .Where(content => content.Id == youtubeContentId)
+                .ExecuteUpdateAsync(
+                    setters => setters
+                        .SetProperty(content => content.LastProcessingError, error)
+                        .SetProperty(content => content.UpdatedAt, DateTimeOffset.UtcNow),
+                    cancellationToken);
         }
     }
 }

@@ -57,9 +57,16 @@ namespace ContentAggregator.Application.Services.Facebook
                 {
                     cancellationToken.ThrowIfCancellationRequested();
 
+                    var approvedRevision = content.Publication?.PublishedRevision;
+                    if (approvedRevision == null)
+                    {
+                        content.LastProcessingError = "Published Facebook content has no approved revision.";
+                        continue;
+                    }
+
                     var postUrl = $"https://www.youtube.com/watch?v={content.VideoId}";
-                    var disclaimer = AiSummaryDisclaimer.GetText(content.SubtitleLanguage);
-                    var message = content.VideoSummary + $"\n\n{disclaimer}";
+                    var disclaimer = AiSummaryDisclaimer.GetText(approvedRevision.Language);
+                    var message = approvedRevision.Summary + $"\n\n{disclaimer}";
                     var publishResult = await _facebookPublisher.SharePostAsync(
                         _facebookPublisher.DefaultPageId!,
                         postUrl,

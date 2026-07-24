@@ -1,4 +1,5 @@
 using ContentAggregator.Application.Interfaces;
+using ContentAggregator.Application.Services.Summarization;
 using ContentAggregator.Application.Support;
 using Microsoft.Extensions.Logging;
 
@@ -46,12 +47,27 @@ namespace ContentAggregator.Application.Services.YoutubeComments
                 {
                     cancellationToken.ThrowIfCancellationRequested();
 
-                    var commentText = BuildCommentText(
-                        content.YoutubeCommentText ?? content.VideoSummary ?? string.Empty,
-                        content.SubtitleLanguage);
+                    var approvedRevision = content.Publication?.PublishedRevision;
+                    if (approvedRevision == null)
+                    {
+                        content.LastProcessingError = "Published YouTube content has no approved revision.";
+                        continue;
+                    }
+
+                    var outline = YoutubeCommentOutlineRenderer.Render(approvedRevision.Sections);
+                    if (!TryBuildCommentText(
+                            outline,
+                            approvedRevision.Language,
+                            out var commentText,
+                            out var validationError))
+                    {
+                        content.LastProcessingError = validationError;
+                        continue;
+                    }
+
                     var publishResult = await _youtubeCommentPublisher.PublishAsync(
                         content.VideoId,
-                        commentText,
+                        commentText!,
                         cancellationToken);
 
                     if (!publishResult.Success)
@@ -84,17 +100,26 @@ namespace ContentAggregator.Application.Services.YoutubeComments
             }
         }
 
-        private static string BuildCommentText(string summary, Core.Entities.SubtitleLanguage subtitleLanguage)
+        private static bool TryBuildCommentText(
+            string outline,
+            Core.Entities.SubtitleLanguage subtitleLanguage,
+            out string? commentText,
+            out string? validationError)
         {
             var disclaimer = AiSummaryDisclaimer.GetText(subtitleLanguage);
-            var result = summary + Environment.NewLine + Environment.NewLine + disclaimer;
-            const int maxLen = 900;
-            if (result.Length <= maxLen)
+            commentText = outline + Environment.NewLine + Environment.NewLine + disclaimer;
+
+            const int maxCommentLength = 10_000;
+            if (commentText.Length <= maxCommentLength)
             {
-                return result;
+                validationError = null;
+                return true;
             }
 
-            return result[..(maxLen - 3)] + "...";
+            validationError =
+                $"YouTube comment is {commentText.Length} characters; the maximum is {maxCommentLength}.";
+            commentText = null;
+            return false;
         }
     }
 }

@@ -81,6 +81,22 @@ namespace ContentAggregator.Core.Entities
         {
             EnsureEditable();
 
+            var previousSection = _sections.LastOrDefault();
+            if (previousSection != null)
+            {
+                if (startSeconds <= previousSection.StartSeconds)
+                {
+                    throw new InvalidOperationException(
+                        "Section start times must be strictly increasing.");
+                }
+
+                if (previousSection.EndSeconds.HasValue
+                    && previousSection.EndSeconds.Value > startSeconds)
+                {
+                    throw new InvalidOperationException("Content sections cannot overlap.");
+                }
+            }
+
             var section = new YoutubeContentSection(
                 _sections.Count,
                 startSeconds,
@@ -95,9 +111,33 @@ namespace ContentAggregator.Core.Entities
             return section;
         }
 
-        public void MarkReadyForReview()
+        public void MarkReadyForReview(TimeSpan videoLength)
         {
             EnsureEditable();
+
+            if (string.IsNullOrWhiteSpace(Summary))
+            {
+                throw new InvalidOperationException("A revision summary is required before review.");
+            }
+
+            if (_sections.Count == 0)
+            {
+                throw new InvalidOperationException("At least one content section is required before review.");
+            }
+
+            if (videoLength <= TimeSpan.Zero)
+            {
+                throw new InvalidOperationException("A positive video duration is required before review.");
+            }
+
+            var videoLengthSeconds = (int)Math.Ceiling(videoLength.TotalSeconds);
+            if (_sections.Any(section =>
+                    section.StartSeconds >= videoLengthSeconds
+                    || section.EndSeconds > videoLengthSeconds))
+            {
+                throw new InvalidOperationException("Content section timestamps must be within the video duration.");
+            }
+
             ReviewState = EditorialReviewState.ReadyForReview;
             UpdatedAt = DateTimeOffset.UtcNow;
         }
